@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="description" content="세계의 한 달을 각자의 언어로. 24개 국가·지역의 원어 뉴스 아카이브.">
+ <title>세계의 문장들 — World in Words</title>
+ <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='black'/%3E%3Ctext x='10' y='48' font-family='Arial' font-size='46' fill='white'%3EW%3C/text%3E%3C/svg%3E">
+ <link rel="stylesheet" href="style.css">
+ <script src="news.js" defer></script><script src="app.js" defer></script>
+</head>
+<body>
+ <a class="skip" href="#archive">뉴스 목록으로 이동</a>
+ <header class="masthead">
+  <a class="brand" href="./"><span class="brand-symbol" aria-hidden="true">↗</span><span>세계의 문장들<small>WORLD IN WORDS</small></span></a>
+  <p class="mast-note">A MONTH OF NEWS.<br>IN THEIR OWN WORDS.</p>
+  <nav class="top-nav" aria-label="주 메뉴"><button id="archive-tab" class="active">아카이브 <span>↗</span></button><button id="saved-tab">저장한 기사 <span id="saved-count">0</span></button><button id="about-open">소개 <span>↗</span></button></nav>
+  <button id="menu-toggle" aria-expanded="false" aria-controls="directory">국가 선택 +</button>
+ </header>
+ <div class="layout">
+  <aside id="directory" class="directory">
+   <div class="directory-top"><span class="eyebrow">INDEX / 국가·지역</span><span id="country-count">24</span></div>
+   <button class="country all selected" data-country="all">전체 보기 <span id="all-count">—</span></button>
+   <nav id="countries" aria-label="국가별 뉴스"></nav>
+   <div class="directory-foot"><span class="small-dot"></span> ORIGINAL LANGUAGE<br><p>서로 다른 언어.<br>같은 시간 위의 세계.</p><span class="mono">EDITION 001 / SEP 2026</span></div>
+  </aside>
+  <main id="archive">
+   <section class="intro">
+    <div class="issue-line"><span class="eyebrow">INTERNATIONAL NEWS ARCHIVE</span><span id="period" class="mono"></span></div>
+    <div class="intro-grid"><h1>세계의<br>문장들<span class="asterisk">*</span></h1><div class="intro-copy"><p>세계의 한 달을,<br>각자의 언어로 읽습니다.</p><p class="sub-copy">번역을 거치기 전의 목소리.<br>국경 너머에서 도착한 뉴스의 기록.</p><div id="statistics" class="statistics"></div></div></div>
+    <div class="language-strip" aria-hidden="true"><span>세계</span><span>World</span><span>世界</span><span>Monde</span><span>العالم</span><span>Mundo</span><span>Welt</span><span>दुनिया</span></div>
+   </section>
+   <section class="news-section" aria-labelledby="section-title">
+    <div class="section-heading"><h2 id="section-title">모든 곳의 소식 <span>All dispatches</span></h2><span id="result-count" class="mono" aria-live="polite"></span></div>
+    <div class="filters"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="제목, 나라, 언론사 검색" aria-label="뉴스 검색"><kbd>/</kbd></label><label class="select-label"><span class="sr-only">발행 기간</span><select id="date-filter"><option value="all">한 달 전체</option><option value="7">최근 7일</option><option value="14">최근 14일</option></select></label><label class="select-label"><span class="sr-only">정렬</span><select id="sort"><option value="new">최신순 ↓</option><option value="old">오래된순 ↑</option><option value="country">국가순</option></select></label></div>
+    <div class="news-columns"><div class="feed"><div class="feed-label"><span>발행일 / 원어 헤드라인</span><span>SELECT TO READ ↗</span></div><div id="article-list"></div><button id="more" class="more">더 많은 문장 보기 <span>↓</span></button></div><aside id="reader" class="reader" aria-label="선택한 기사"></aside></div>
+   </section>
+   <footer><span>세계의 문장들 © 2026</span><span>24 places. Many perspectives.</span><button id="back-top">맨 위로 ↑</button></footer>
+  </main>
+ </div>
+ <dialog id="about"><button id="about-close" class="dialog-close" aria-label="소개 닫기">닫기 ×</button><p class="eyebrow">ABOUT THE ARCHIVE</p><h2>하나의 세계,<br>여러 개의 문장.</h2><p>세계의 문장들은 24개 국가·지역 언론의 최근 한 달 뉴스를 모은 개인용 뉴스 리더입니다. 제목은 수집된 언론사의 원어로 표시하고, 전문은 원문 사이트에서 읽을 수 있습니다.</p><dl><dt>수집 기간</dt><dd id="about-period"></dd><dt>수집 방식</dt><dd>국가별 언론사로 범위를 제한한 Google News RSS. 발행일을 확인하고 언론사와 주차를 분산하여 선별했습니다. 전체 기사를 망라하지는 않습니다.</dd><dt>국가·언어 기준</dt><dd>국가 분류는 사건 발생지가 아닌 언론사·뉴스판의 기준입니다. 다언어 국가에서는 이번 수집에 사용한 언어를 표시합니다.</dd><dt>갱신</dt><dd id="about-update"></dd><dt>저장한 기사</dt><dd>현재 브라우저에만 보관됩니다. 로그인이나 서버 전송은 없습니다.</dd><dt>디자인 참고</dt><dd><a href="https://jinhwon.com/" target="_blank" rel="noopener noreferrer">홍진훤 — jinhwon.com ↗</a><br>텍스트 중심의 국가 목차와 분할 화면 구성.</dd></dl><p class="fine">기사의 저작권은 각 언론사에 있습니다. 원문 링크는 Google News를 통해 연결됩니다. 개인·비상업적 열람을 위한 아카이브입니다.</p></dialog>
+ <div id="toast" role="status"></div>
+ <noscript>원어 뉴스 목록을 보려면 브라우저의 JavaScript를 활성화해주세요.</noscript>
+</body>
+</html>
