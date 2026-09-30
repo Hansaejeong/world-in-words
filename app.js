@@ -29,12 +29,12 @@
  function render(){results=filtered();$('#saved-count').textContent=saved.size;
   $('#archive-tab').classList.toggle('active',state.mode==='archive');$('#saved-tab').classList.toggle('active',state.mode==='saved');
   document.querySelectorAll('[data-country]').forEach(b=>{b.classList.toggle('selected',b.dataset.country===state.country);b.setAttribute('aria-pressed',String(b.dataset.country===state.country));});
-  const c=countries.get(state.country);$('#section-title').innerHTML=state.mode==='saved'?'저장한 문장들 <span>Saved dispatches</span>':c?`${esc(c.ko)}의 소식 <span>${esc(c.name)}</span>`:'모든 곳의 소식 <span>All dispatches</span>';
+  const c=countries.get(state.country);$('#section-title').innerHTML=state.mode==='saved'?'저장한 기사':c?`${esc(c.ko)}의 소식 <span>${esc(c.name)}</span>`:'전체 기사';
   $('#result-count').textContent=`${String(results.length).padStart(3,'0')} ARTICLES`;
   if(!results.some(a=>a.id===state.selected))state.selected=results[0]?.id||null;
-  $('#article-list').innerHTML=results.length?results.slice(0,state.limit).map(a=>{const c=countries.get(a.country);return `<article class="news-item ${a.id===state.selected?'chosen':''}"><button class="article-select" data-id="${a.id}" aria-label="${esc(a.title)} — 기사 정보" aria-pressed="${a.id===state.selected}"><span class="item-meta"><span class="locale"><bdi lang="${c.lang}">${esc(c.name)}</bdi></span><span>${esc(c.language)}</span><time datetime="${a.date}">${shortDate(a.date)}</time></span><span class="item-title" lang="${a.lang}" dir="${a.direction}">${esc(a.title)}</span><span class="item-source">${esc(a.source)}<span class="read-arrow" aria-hidden="true">↗</span></span></button><button class="save-small" data-save="${a.id}" aria-label="${saved.has(a.id)?'저장 해제':'기사 저장'}: ${esc(a.title)}" aria-pressed="${saved.has(a.id)}">${saved.has(a.id)?'◆':'◇'}</button></article>`;}).join(''):`<div class="empty"><strong>${state.mode==='saved'&&!saved.size?'아직 저장한 기사가 없습니다.':'일치하는 기사가 없습니다.'}</strong><p>${state.mode==='saved'&&!saved.size?'마음에 남는 문장 옆의 ◇를 눌러보세요.':'다른 검색어를 입력하거나 필터를 초기화해보세요.'}</p><button id="empty-reset">${state.mode==='saved'&&!saved.size?'모든 기사 둘러보기 ↗':'필터 초기화 ↺'}</button></div>`;
+  $('#article-list').innerHTML=results.length?results.slice(0,state.limit).map(a=>{const c=countries.get(a.country);return `<article class="news-item ${a.id===state.selected?'chosen':''}"><button class="article-select" data-id="${a.id}" aria-label="${esc(a.title)} — 기사 정보" aria-pressed="${a.id===state.selected}"><span class="item-meta"><span class="locale"><bdi lang="${c.lang}">${esc(c.name)}</bdi></span><span>${esc(c.language)}</span><time datetime="${a.date}">${shortDate(a.date)}</time></span><span class="item-title" lang="${a.lang}" dir="${a.direction}">${esc(a.title)}</span><span class="item-source">${esc(a.source)}<span class="read-arrow" aria-hidden="true">↗</span></span></button><button class="save-small" data-save="${a.id}" aria-label="${saved.has(a.id)?'저장 해제':'기사 저장'}: ${esc(a.title)}" aria-pressed="${saved.has(a.id)}">${saved.has(a.id)?'◆':'◇'}</button></article>`;}).join(''):`<div class="empty"><strong>${state.mode==='saved'&&!saved.size?'아직 저장한 기사가 없습니다.':'일치하는 기사가 없습니다.'}</strong><p>${state.mode==='saved'&&!saved.size?'기사 옆의 ◇를 눌러 저장하세요.':'다른 검색어를 입력하거나 필터를 초기화해보세요.'}</p><button id="empty-reset">${state.mode==='saved'&&!saved.size?'모든 기사 둘러보기 ↗':'필터 초기화 ↺'}</button></div>`;
   $('#more').hidden=results.length<=state.limit;
-  if(!$('#more').hidden)$('#more').innerHTML=`더 많은 문장 보기 <span>${Math.min(state.limit,results.length)} / ${results.length} ↓</span>`;
+  if(!$('#more').hidden)$('#more').innerHTML=`기사 더 보기 <span>${Math.min(state.limit,results.length)} / ${results.length} ↓</span>`;
   $('#empty-reset')?.addEventListener('click',()=>{if(state.mode==='saved'&&!saved.size)state.mode='archive';reset();});renderReader();
  }
  async function translateTitle(a){
@@ -56,26 +56,26 @@
    if(state.selected===a.id){button.disabled=false;button.textContent='한국어 제목 다시 시도';status.innerHTML='<span>지금은 제목 번역을 불러오지 못했습니다.</span> <a href="'+esc('https://translate.google.com/?sl=auto&tl=ko&text='+encodeURIComponent(a.title)+'&op=translate')+'" target="_blank" rel="noopener noreferrer">Google 번역에서 보기 ↗</a>';}
   }finally{clearTimeout(timeout);}
  }
- function renderReader(){const a=data.articles.find(a=>a.id===state.selected);if(!a){$('#reader').innerHTML='<p class="reader-empty">세계를 읽는 또 하나의 방법.<br>목록에서 문장을 선택해주세요.</p>';return;}
+ function renderReader(){const a=data.articles.find(a=>a.id===state.selected);if(!a){$('#reader').innerHTML='<p class="reader-empty">목록에서 기사를 선택해주세요.</p>';return;}
   const c=countries.get(a.country),i=results.findIndex(x=>x.id===a.id);
   let nativeDate;try{nativeDate=new Intl.DateTimeFormat(a.lang,{dateStyle:'long',timeZone:'UTC'}).format(new Date(a.date));}catch{nativeDate=shortDate(a.date);}
   const translated=state.translationId===a.id&&titleTranslations.has(a.id);
   const publisherUrl=safeUrl(a.publisherUrl||a.url);
-  const fullTranslationUrl=a.publisherUrl?'https://translate.yandex.com/translate?url='+encodeURIComponent(publisherUrl)+'&lang='+encodeURIComponent(a.lang.split('-')[0]+'-ko'):null;
   $('#reader').innerHTML=`
    <div class="reader-top"><span class="eyebrow">DISPATCH / ${c.code}</span><span class="reader-tag">ORIGINAL LANGUAGE</span><button class="close-reader">닫기 ×</button></div>
    <p class="reader-country">${esc(c.ko)} · <bdi lang="${c.lang}">${esc(c.name)}</bdi></p>
    <h2 id="reader-title" lang="${translated?'ko':a.lang}" dir="${translated?'ltr':a.direction}">${esc(translated?titleTranslations.get(a.id):a.title)}</h2>
    ${translated?`<p class="original-heading">원어 제목 · <span lang="${a.lang}" dir="${a.direction}">${esc(a.title)}</span></p>`:''}
    <div class="translation-controls">
-    ${a.lang==='ko'?'<span class="already-korean">한국어 기사</span>':`<button id="translate-title" type="button" aria-pressed="${translated}">${translated?'원어 제목 보기':'제목 한국어로 보기'}</button>${fullTranslationUrl?`<a class="translate-full" href="${esc(fullTranslationUrl)}" target="_blank" rel="noopener noreferrer">기사 전문 한국어로 보기 ↗</a>`:''}`}
+    ${a.lang==='ko'?'<span class="already-korean">한국어 기사</span>':`<button id="translate-title" type="button" aria-pressed="${translated}">${translated?'원어 제목 보기':'제목 한국어로 보기'}</button>`}
    </div>
+   ${a.lang==='ko'?'':`<details class="free-translation"><summary>전문 무료 번역</summary><ol><li><a href="${esc(publisherUrl)}" target="_blank" rel="noopener noreferrer">기사 원문 열기</a></li><li>Chrome: 주소창의 번역 아이콘 또는 페이지 우클릭 → 한국어로 번역.<br>Edge: 주소창의 번역 아이콘 → 한국어 → 번역.</li></ol><p>별도 결제 없이 이용할 수 있습니다. 언론사의 유료 기사·로그인 제한은 그대로 적용됩니다.</p><p>본문을 복사해 <a href="https://translate.google.com/?sl=auto&tl=ko&op=translate" target="_blank" rel="noopener noreferrer">Google 번역</a> 또는 <a href="https://papago.naver.com/" target="_blank" rel="noopener noreferrer">파파고 텍스트 번역</a>에 붙여넣을 수도 있습니다.</p></details>`}
    <p id="translation-status" class="translation-status" role="status">${translated?'자동 번역된 제목입니다.':''}</p>
    <dl class="reader-details"><div><dt>발행</dt><dd lang="${a.lang}" dir="auto">${esc(nativeDate)}</dd></div><div><dt>언론사</dt><dd><a href="${esc(safeUrl(a.sourceUrl))}" target="_blank" rel="noopener noreferrer">${esc(a.source)} ↗</a></dd></div><div><dt>언어</dt><dd>${esc(c.language)} · ${esc(a.lang)}</dd></div><div><dt>수집</dt><dd>${shortDate(data.collectedAt)}</dd></div></dl>
    <a class="original-link" href="${esc(publisherUrl)}" target="_blank" rel="noopener noreferrer">원문에서 전문 읽기 <span>↗</span></a>
    <div class="reader-actions"><button data-save="${a.id}">${saved.has(a.id)?'◆ 저장됨':'◇ 기사 저장'}</button><button id="copy-link">링크 복사 ↗</button></div>
-   <p class="reader-note">${esc(c.language)} 원어 제목입니다. 한국어 번역은 자동 번역이며 오류가 있을 수 있습니다.<br>전문 번역은 Yandex 번역에서 열립니다. 언론사의 접속 제한에 따라 제공되지 않을 수 있습니다.</p>
-   <div class="reader-bottom"><span>${String(i+1).padStart(3,'0')} / ${String(results.length).padStart(3,'0')} 문장</span><div><button id="previous" aria-label="이전 기사" ${i<=0?'disabled':''}>←</button> <button id="next" aria-label="다음 기사" ${i>=results.length-1?'disabled':''}>→</button></div></div><div class="reader-mark" aria-hidden="true">${c.code} ↗</div>`;
+   <p class="reader-note">${esc(c.language)} 원어 제목입니다. 한국어 번역은 자동 번역이며 오류가 있을 수 있습니다.<br>전문 번역 방법은 위의 ‘전문 무료 번역’을 펼쳐 확인하세요.</p>
+   <div class="reader-bottom"><span>${String(i+1).padStart(3,'0')} / ${String(results.length).padStart(3,'0')} 기사</span><div><button id="previous" aria-label="이전 기사" ${i<=0?'disabled':''}>←</button> <button id="next" aria-label="다음 기사" ${i>=results.length-1?'disabled':''}>→</button></div></div><div class="reader-mark" aria-hidden="true">${c.code} ↗</div>`;
   $('#translate-title')?.addEventListener('click',()=>{if(state.translationId===a.id){state.translationId=null;renderReader();}else translateTitle(a);});
   $('.close-reader').addEventListener('click',()=>$('#reader').classList.remove('mobile-open'));
   $('#copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(publisherUrl);toast('원문 링크를 복사했습니다.');}catch{const t=document.createElement('textarea');t.value=publisherUrl;document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();toast(ok?'원문 링크를 복사했습니다.':'복사할 수 없습니다. 원문 링크를 길게 눌러 복사해주세요.');}});

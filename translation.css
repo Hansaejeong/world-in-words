@@ -12,3 +12,11 @@ h1 .asterisk{left:2.25em;top:-.18em;font-size:.78em}
 .translation-status a{text-decoration:underline;text-underline-offset:3px}
 .original-heading{margin:-19px 0 22px;color:var(--muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
 @media(max-width:560px){h1 small{font-size:29px;margin-top:12px}h1 .asterisk{font-size:.76em}.translation-controls{margin-top:-5px}.translation-controls button,.translation-controls a{flex:1;justify-content:center;white-space:nowrap}}
+
+.intro{padding-bottom:22px;border-bottom:1px solid var(--line)}
+.intro>.statistics{margin-top:18px}
+.free-translation{margin:8px 0 16px;border:1px solid var(--line);font-size:14px;line-height:1.65}
+.free-translation summary{cursor:pointer;padding:10px 12px;font-weight:600}
+.free-translation ol{padding:0 18px 0 34px;margin:8px 0}
+.free-translation p{padding:0 12px;margin:10px 0}
+.free-translation a{text-decoration:underline;text-underline-offset:3px}

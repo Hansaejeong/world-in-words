@@ -14,14 +14,14 @@ jinhwon.com의 텍스트 목차와 다단 구성을 참고한 원어 뉴스 아�
 
 RSS의 개인·비상업적 이용 범위에 맞춘 개인용 뉴스 리더입니다. 기사 전문은 재배포하지 않습니다. 원문은 언론사로 연결됩니다.
 
-현재는 고정 수집본이며 자동 갱신하지 않습니다. 새 수집본 생성: `python3 scripts/collect.py` 또는 `python3 scripts/collect.py YYYY-MM-DD`. 이어서 `python3 scripts/resolve_links.py`를 실행하면 출판사 직접 링크가 추가되어 전문 번역 버튼이 활성화됩니다. Python 3.10+와 curl, 네트워크 연결이 필요합니다. 수집 실패 시 기존 데이터 파일을 유지합니다. 일부 국가의 수집이 실패하면 news.js의 failures에 기록됩니다.
+현재는 고정 수집본이며 자동 갱신하지 않습니다. 새 수집본 생성: `python3 scripts/collect.py` 또는 `python3 scripts/collect.py YYYY-MM-DD`. 이어서 `python3 scripts/resolve_links.py`를 실행하면 출판사 직접 링크가 추가되어 원문 링크가 보강됩니다. Python 3.10+와 curl, 네트워크 연결이 필요합니다. 수집 실패 시 기존 데이터 파일을 유지합니다. 일부 국가의 수집이 실패하면 news.js의 failures에 기록됩니다.
 
 ## 기능
 
 - 24개 국가·지역 목차, 검색, 날짜 필터, 정렬, 더 보기
 - 원어 제목, 아랍어 RTL, 원문 연결
 - 브라우저 로컬 저장, 링크 복사, 모바일 상세 화면
-- 선택한 원어 제목의 한국어 번역, Yandex 번역으로 기사 전문 열기
+- 선택한 원어 제목의 한국어 번역, Chrome·Edge의 무료 전문 번역 안내
 - 소개의 수집 기준, 출처·기간 명시
 
 ## 구조
