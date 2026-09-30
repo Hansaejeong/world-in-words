@@ -2,7 +2,7 @@
 Run: python3 scripts/collect.py [YYYY-MM-DD]. No API key required.
 """
 from zoneinfo import ZoneInfo
-import concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
+import calendar, concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COUNTRIES = [
@@ -58,7 +58,10 @@ SOURCES = {
  'NZ':['rnz.co.nz','nzherald.co.nz','stuff.co.nz','1news.co.nz'],
 }
 END = dt.date.fromisoformat(sys.argv[1]) if len(sys.argv)>1 else dt.datetime.now(ZoneInfo('Asia/Seoul')).date()
-START = END - dt.timedelta(days=1)
+previous_year = END.year - (END.month == 1)
+previous_month = 12 if END.month == 1 else END.month - 1
+START = END.replace(year=previous_year, month=previous_month, day=min(END.day, calendar.monthrange(previous_year, previous_month)[1]))
+COUNTRY_LIMIT = 50
 
 def collect(c):
     code,name,ko,region,lang,term,language = c
@@ -85,13 +88,17 @@ def collect(c):
             link=item.findtext('link','')
             if not link.startswith('https://'): continue
             items.append({'id':hashlib.sha256((code+link).encode()).hexdigest()[:12],'country':code,'title':title,'date':date.isoformat(),'source':publisher,'sourceUrl':source.get('url','') if source is not None else '', 'url':link,'lang':lang,'direction':'rtl' if lang=='ar' else 'ltr'})
-        # Most recent real headlines, with a maximum of five per publisher.
+        # Select recent headlines across publishers, then fill remaining slots.
         selected=[]; publishers={}
         for x in sorted(items, key=lambda a: a['date'], reverse=True):
-            if publishers.get(x['source'], 0) >= 5: continue
+            if publishers.get(x['source'], 0) >= 15: continue
             selected.append(x)
             publishers[x['source']] = publishers.get(x['source'], 0) + 1
-            if len(selected) >= 20: break
+            if len(selected) >= COUNTRY_LIMIT: break
+        if len(selected) < COUNTRY_LIMIT:
+            selected_ids = {x['id'] for x in selected}
+            remaining = [x for x in sorted(items, key=lambda a: a['date'], reverse=True) if x['id'] not in selected_ids]
+            selected.extend(remaining[:COUNTRY_LIMIT - len(selected)])
         return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},selected,None
     except Exception as e:
         return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},[],str(e)
@@ -105,7 +112,7 @@ if __name__=='__main__':
             if error: failures.append({'country':country['code'],'error':error})
     if not articles: raise SystemExit('No verified articles; existing snapshot preserved.')
     articles.sort(key=lambda x:x['date'],reverse=True)
-    data={'start':START.isoformat(),'end':END.isoformat(),'collectedAt':dt.datetime.now(dt.timezone.utc).isoformat(),'countries':countries,'articles':articles,'failures':failures}
+    data={'articleLimitPerCountry':COUNTRY_LIMIT,'window':'month','start':START.isoformat(),'end':END.isoformat(),'collectedAt':dt.datetime.now(dt.timezone.utc).isoformat(),'countries':countries,'articles':articles,'failures':failures}
     target=ROOT/'news.js'
     temp=target.with_suffix('.tmp')
     temp.write_text('window.NEWS = '+json.dumps(data,ensure_ascii=False,separators=(',',':'))+';\n')

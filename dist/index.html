@@ -9,13 +9,13 @@
 </head>
 <body>
 <a class="skip" href="#article-list">제목 목록으로 이동</a>
-<header><a class="brand" href="./">WIW <span>World In Words</span></a><p>세계의 소식, 오직 제목으로.</p><time id="today"></time><p id="update-status" role="status"></p></header>
+<header><a class="brand" href="./">WIW <span>World In Words</span></a><time id="today"></time><span id="period" aria-label="기사 수집 기간"></span><p id="update-status" role="status"></p></header>
 <div class="layout">
 <aside><h2>국가·지역</h2><button data-country="all" class="selected">전체</button><nav id="countries" aria-label="국가별 제목"></nav></aside>
 <main><div class="tools"><label>검색 <input id="search" type="search" placeholder="제목, 국가, 언론사" aria-label="헤드라인 검색"></label><label>순서 <select id="sort"><option value="new">최신순</option><option value="old">오래된순</option><option value="country">국가순</option></select></label></div>
 <div class="heading"><h1 id="section-title">세계의 헤드라인</h1><p id="result-count" aria-live="polite"></p></div>
 <div id="article-list"></div><button id="more" hidden>제목 더 보기</button></main>
 </div>
-<footer><p>World In Words</p><p>24개 국가·지역 언론의 원어 제목을 모읍니다. 날짜와 갱신 기준은 한국 시간 자정입니다.</p><button id="back-top">맨 위로</button></footer>
+<footer><p>World In Words</p><button id="back-top">맨 위로</button></footer>
 <noscript>기사 제목을 보려면 JavaScript를 활성화해주세요.</noscript>
 </body></html>
