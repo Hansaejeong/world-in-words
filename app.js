@@ -8,7 +8,8 @@
  const safeUrl=u=>{try {return new URL(u).protocol==='https:'?u:'#';}catch{return '#';}};
  const labels={Asia:'아시아',Europe:'유럽',Americas:'아메리카',Africa:'아프리카','Middle East':'중동',Oceania:'오세아니아'};
  let saved=new Set();try{const v=JSON.parse(localStorage.getItem('wiw-saved')||'[]');if(Array.isArray(v)) saved=new Set(v.filter(x=>data.articles.some(a=>a.id===x)));}catch{}
- const state={country:'all',mode:'archive',query:'',days:'all',sort:'new',limit:24,selected:null};
+ const state={country:'all',mode:'archive',query:'',days:'all',sort:'new',limit:24,selected:null,translationId:null};
+ const titleTranslations=new Map();
  let results=[];
  const period=`${shortDate(data.start)} — ${shortDate(data.end)}`;
  $('#period').textContent=period;$('#about-period').textContent=period+' (발행일 UTC 기준)';
@@ -36,15 +37,51 @@
   if(!$('#more').hidden)$('#more').innerHTML=`더 많은 문장 보기 <span>${Math.min(state.limit,results.length)} / ${results.length} ↓</span>`;
   $('#empty-reset')?.addEventListener('click',()=>{if(state.mode==='saved'&&!saved.size)state.mode='archive';reset();});renderReader();
  }
+ async function translateTitle(a){
+  if(titleTranslations.has(a.id)){state.translationId=a.id;renderReader();return;}
+  const button=$('#translate-title'), status=$('#translation-status');
+  button.disabled=true;button.textContent='번역하는 중…';status.textContent='기사 제목을 한국어로 번역하고 있습니다.';
+  const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+   const url=new URL('https://translate.googleapis.com/translate_a/single');
+   Object.entries({client:'gtx',sl:'auto',tl:'ko',dt:'t',q:a.title}).forEach(([key,value])=>url.searchParams.set(key,value));
+   const response=await fetch(url,{signal:controller.signal});
+   if(!response.ok)throw Error('번역 서비스 응답 오류');
+   const payload=await response.json();
+   const translated=payload?.[0]?.map(part=>part?.[0]||'').join('').trim();
+   if(!translated)throw Error('번역 결과 없음');
+   titleTranslations.set(a.id,translated);
+   if(state.selected===a.id){state.translationId=a.id;renderReader();}
+  }catch{
+   if(state.selected===a.id){button.disabled=false;button.textContent='한국어 제목 다시 시도';status.innerHTML='<span>지금은 제목 번역을 불러오지 못했습니다.</span> <a href="'+esc('https://translate.google.com/?sl=auto&tl=ko&text='+encodeURIComponent(a.title)+'&op=translate')+'" target="_blank" rel="noopener noreferrer">Google 번역에서 보기 ↗</a>';}
+  }finally{clearTimeout(timeout);}
+ }
  function renderReader(){const a=data.articles.find(a=>a.id===state.selected);if(!a){$('#reader').innerHTML='<p class="reader-empty">세계를 읽는 또 하나의 방법.<br>목록에서 문장을 선택해주세요.</p>';return;}
   const c=countries.get(a.country),i=results.findIndex(x=>x.id===a.id);
   let nativeDate;try{nativeDate=new Intl.DateTimeFormat(a.lang,{dateStyle:'long',timeZone:'UTC'}).format(new Date(a.date));}catch{nativeDate=shortDate(a.date);}
-  $('#reader').innerHTML=`<div class="reader-top"><span class="eyebrow">DISPATCH / ${c.code}</span><span class="reader-tag">ORIGINAL LANGUAGE</span><button class="close-reader">닫기 ×</button></div><p class="reader-country">${esc(c.ko)} · <bdi lang="${c.lang}">${esc(c.name)}</bdi></p><h2 lang="${a.lang}" dir="${a.direction}">${esc(a.title)}</h2><dl class="reader-details"><div><dt>발행</dt><dd lang="${a.lang}" dir="auto">${esc(nativeDate)}</dd></div><div><dt>언론사</dt><dd><a href="${esc(safeUrl(a.sourceUrl))}" target="_blank" rel="noopener noreferrer">${esc(a.source)} ↗</a></dd></div><div><dt>언어</dt><dd>${esc(c.language)} · ${esc(a.lang)}</dd></div><div><dt>수집</dt><dd>${shortDate(data.collectedAt)}</dd></div></dl><a class="original-link" href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener noreferrer">원문에서 전문 읽기 <span>↗</span></a><div class="reader-actions"><button data-save="${a.id}">${saved.has(a.id)?'◆ 저장됨':'◇ 기사 저장'}</button><button id="copy-link">링크 복사 ↗</button></div><p class="reader-note">${esc(c.language)} 원어 제목입니다.<br>전문은 Google News를 통해 언론사 사이트로 연결됩니다. 원문 제공처에 따라 구독이 필요할 수 있습니다.</p><div class="reader-bottom"><span>${String(i+1).padStart(3,'0')} / ${String(results.length).padStart(3,'0')} 문장</span><div><button id="previous" aria-label="이전 기사" ${i<=0?'disabled':''}>←</button> <button id="next" aria-label="다음 기사" ${i>=results.length-1?'disabled':''}>→</button></div></div><div class="reader-mark" aria-hidden="true">${c.code} ↗</div>`;
+  const translated=state.translationId===a.id&&titleTranslations.has(a.id);
+  const publisherUrl=safeUrl(a.publisherUrl||a.url);
+  const fullTranslationUrl=a.publisherUrl?'https://translate.yandex.com/translate?url='+encodeURIComponent(publisherUrl)+'&lang='+encodeURIComponent(a.lang.split('-')[0]+'-ko'):null;
+  $('#reader').innerHTML=`
+   <div class="reader-top"><span class="eyebrow">DISPATCH / ${c.code}</span><span class="reader-tag">ORIGINAL LANGUAGE</span><button class="close-reader">닫기 ×</button></div>
+   <p class="reader-country">${esc(c.ko)} · <bdi lang="${c.lang}">${esc(c.name)}</bdi></p>
+   <h2 id="reader-title" lang="${translated?'ko':a.lang}" dir="${translated?'ltr':a.direction}">${esc(translated?titleTranslations.get(a.id):a.title)}</h2>
+   ${translated?`<p class="original-heading">원어 제목 · <span lang="${a.lang}" dir="${a.direction}">${esc(a.title)}</span></p>`:''}
+   <div class="translation-controls">
+    ${a.lang==='ko'?'<span class="already-korean">한국어 기사</span>':`<button id="translate-title" type="button" aria-pressed="${translated}">${translated?'원어 제목 보기':'제목 한국어로 보기'}</button>${fullTranslationUrl?`<a class="translate-full" href="${esc(fullTranslationUrl)}" target="_blank" rel="noopener noreferrer">기사 전문 한국어로 보기 ↗</a>`:''}`}
+   </div>
+   <p id="translation-status" class="translation-status" role="status">${translated?'자동 번역된 제목입니다.':''}</p>
+   <dl class="reader-details"><div><dt>발행</dt><dd lang="${a.lang}" dir="auto">${esc(nativeDate)}</dd></div><div><dt>언론사</dt><dd><a href="${esc(safeUrl(a.sourceUrl))}" target="_blank" rel="noopener noreferrer">${esc(a.source)} ↗</a></dd></div><div><dt>언어</dt><dd>${esc(c.language)} · ${esc(a.lang)}</dd></div><div><dt>수집</dt><dd>${shortDate(data.collectedAt)}</dd></div></dl>
+   <a class="original-link" href="${esc(publisherUrl)}" target="_blank" rel="noopener noreferrer">원문에서 전문 읽기 <span>↗</span></a>
+   <div class="reader-actions"><button data-save="${a.id}">${saved.has(a.id)?'◆ 저장됨':'◇ 기사 저장'}</button><button id="copy-link">링크 복사 ↗</button></div>
+   <p class="reader-note">${esc(c.language)} 원어 제목입니다. 한국어 번역은 자동 번역이며 오류가 있을 수 있습니다.<br>전문 번역은 Yandex 번역에서 열립니다. 언론사의 접속 제한에 따라 제공되지 않을 수 있습니다.</p>
+   <div class="reader-bottom"><span>${String(i+1).padStart(3,'0')} / ${String(results.length).padStart(3,'0')} 문장</span><div><button id="previous" aria-label="이전 기사" ${i<=0?'disabled':''}>←</button> <button id="next" aria-label="다음 기사" ${i>=results.length-1?'disabled':''}>→</button></div></div><div class="reader-mark" aria-hidden="true">${c.code} ↗</div>`;
+  $('#translate-title')?.addEventListener('click',()=>{if(state.translationId===a.id){state.translationId=null;renderReader();}else translateTitle(a);});
   $('.close-reader').addEventListener('click',()=>$('#reader').classList.remove('mobile-open'));
-  $('#copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(a.url);toast('원문 링크를 복사했습니다.');}catch{const t=document.createElement('textarea');t.value=a.url;document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();toast(ok?'원문 링크를 복사했습니다.':'복사할 수 없습니다. 원문 링크를 길게 눌러 복사해주세요.');}});
+  $('#copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(publisherUrl);toast('원문 링크를 복사했습니다.');}catch{const t=document.createElement('textarea');t.value=publisherUrl;document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();toast(ok?'원문 링크를 복사했습니다.':'복사할 수 없습니다. 원문 링크를 길게 눌러 복사해주세요.');}});
   $('#previous').addEventListener('click',()=>select(results[i-1]?.id));$('#next').addEventListener('click',()=>select(results[i+1]?.id));
  }
- function select(id){if(!id)return;state.selected=id;state.limit=Math.max(state.limit,results.findIndex(a=>a.id===id)+1);render();if(matchMedia('(max-width:800px)').matches)$('#reader').classList.add('mobile-open');$('#reader').scrollTop=0;}
+ function select(id){if(!id)return;if(state.selected!==id)state.translationId=null;state.selected=id;state.limit=Math.max(state.limit,results.findIndex(a=>a.id===id)+1);render();if(matchMedia('(max-width:800px)').matches)$('#reader').classList.add('mobile-open');$('#reader').scrollTop=0;}
  document.addEventListener('click',e=>{const save=e.target.closest('[data-save]');if(save){toggleSave(save.dataset.save);return;}const item=e.target.closest('[data-id]');if(item){select(item.dataset.id);return;}const country=e.target.closest('[data-country]');if(country){state.country=country.dataset.country;state.limit=24;render();$('#directory').classList.remove('open');$('#menu-toggle').setAttribute('aria-expanded','false');}});
  $('#search').addEventListener('input',e=>{state.query=e.target.value;state.limit=24;render();});
  $('#date-filter').addEventListener('change',e=>{state.days=e.target.value;state.limit=24;render();});
