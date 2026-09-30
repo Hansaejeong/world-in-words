@@ -1,0 +1,22 @@
+h1 small{display:block;font-size:clamp(25px,2.7vw,48px);line-height:1.1;letter-spacing:-.055em;font-weight:500;margin-top:10px;white-space:nowrap}
+h1 .asterisk{left:2.25em;top:-.18em;font-size:.78em}
+.translation-controls{display:flex;gap:8px;flex-wrap:wrap;margin:-10px 0 8px}
+.translation-controls button,.translation-controls a,.translation-controls .already-korean{display:inline-flex;align-items:center;min-height:33px;padding:7px 10px;border:1px solid var(--ink);font-size:10px;text-decoration:none}
+.translation-controls button{background:var(--accent)}
+.translation-controls button:hover{background:#d3df4f;color:var(--ink)}
+.translation-controls button:disabled{opacity:.6;cursor:wait}
+.translation-controls a{background:var(--paper)}
+.translation-controls a:hover{background:var(--ink);color:#fff}
+.translation-controls .already-korean{color:var(--muted);border-color:var(--line)}
+.translation-status{min-height:17px;margin:0 0 15px;color:var(--muted);font-size:10px;line-height:1.6}
+.translation-status a{text-decoration:underline;text-underline-offset:3px}
+.original-heading{margin:-19px 0 22px;color:var(--muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+@media(max-width:560px){h1 small{font-size:29px;margin-top:12px}h1 .asterisk{font-size:.76em}.translation-controls{margin-top:-5px}.translation-controls button,.translation-controls a{flex:1;justify-content:center;white-space:nowrap}}
+
+.intro{padding-bottom:22px;border-bottom:1px solid var(--line)}
+.intro>.statistics{margin-top:18px}
+.free-translation{margin:8px 0 16px;border:1px solid var(--line);font-size:14px;line-height:1.65}
+.free-translation summary{cursor:pointer;padding:10px 12px;font-weight:600}
+.free-translation ol{padding:0 18px 0 34px;margin:8px 0}
+.free-translation p{padding:0 12px;margin:10px 0}
+.free-translation a{text-decoration:underline;text-underline-offset:3px}
