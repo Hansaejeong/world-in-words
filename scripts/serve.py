@@ -14,9 +14,16 @@ from zoneinfo import ZoneInfo
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 KST = ZoneInfo('Asia/Seoul')
 
-def snapshot():
+def snapshot(today_only=False, now=None):
     raw = (ROOT / 'news.js').read_text()
-    return json.loads(raw.removeprefix('window.NEWS = ').strip().removesuffix(';'))
+    data = json.loads(raw.removeprefix('window.NEWS = ').strip().removesuffix(';'))
+    if today_only:
+        today = (now or dt.datetime.now(KST)).astimezone(KST).date()
+        data['articles'] = [article for article in data['articles']
+                            if dt.datetime.fromisoformat(article['date']).astimezone(KST).date() == today]
+        data['start'] = data['end'] = today.isoformat()
+        data['window'] = 'day'
+    return data
 
 def refresh_loop():
     while True:
@@ -24,7 +31,7 @@ def refresh_loop():
         try:
             data = snapshot()
             collected = dt.datetime.fromisoformat(data['collectedAt']).astimezone(KST)
-            if collected.date() < now.date() or data.get('articleLimitPerCountry') != 50 or data.get('window') != 'month':
+            if collected.date() < now.date() or data.get('articleLimitPerCountry') != 50 or data.get('window') != 'day' or (now - collected).total_seconds() >= 900:
                 subprocess.run([sys.executable, str(ROOT / 'scripts/collect.py'), now.date().isoformat()], check=True, timeout=600)
                 (ROOT / 'dist/news.js').write_text((ROOT / 'news.js').read_text())
         except Exception as error:
@@ -38,7 +45,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.split('?')[0] == '/api/headlines':
             try:
-                body = json.dumps(snapshot(), ensure_ascii=False).encode()
+                body = json.dumps(snapshot(today_only=True), ensure_ascii=False).encode()
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.send_header('Cache-Control', 'no-store')

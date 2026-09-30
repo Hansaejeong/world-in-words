@@ -2,7 +2,7 @@
 Run: python3 scripts/collect.py [YYYY-MM-DD]. No API key required.
 """
 from zoneinfo import ZoneInfo
-import calendar, concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
+import concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COUNTRIES = [
@@ -58,9 +58,7 @@ SOURCES = {
  'NZ':['rnz.co.nz','nzherald.co.nz','stuff.co.nz','1news.co.nz'],
 }
 END = dt.date.fromisoformat(sys.argv[1]) if len(sys.argv)>1 else dt.datetime.now(ZoneInfo('Asia/Seoul')).date()
-previous_year = END.year - (END.month == 1)
-previous_month = 12 if END.month == 1 else END.month - 1
-START = END.replace(year=previous_year, month=previous_month, day=min(END.day, calendar.monthrange(previous_year, previous_month)[1]))
+START = END
 COUNTRY_LIMIT = 50
 
 def collect(c):
@@ -69,7 +67,7 @@ def collect(c):
     try:
         entries=[]
         for site in SOURCES[code]:
-            query=f'site:{site} after:{START.isoformat()} before:{(END+dt.timedelta(days=1)).isoformat()}'
+            query=f'site:{site} after:{(START-dt.timedelta(days=1)).isoformat()} before:{(END+dt.timedelta(days=1)).isoformat()}'
             url='https://news.google.com/rss/search?'+urllib.parse.urlencode({'q':query,'hl':lang,'gl':code,'ceid':f'{code}:{ceid_lang}'})
             raw=subprocess.run(['curl','--fail','--location','--silent','--show-error','--retry','2','--max-time','25',url],capture_output=True,check=True).stdout
             entries.extend(ET.fromstring(raw).findall('./channel/item'))
@@ -110,9 +108,9 @@ if __name__=='__main__':
             countries.append(country); articles.extend(items)
             print(country['code'],len(items),error or '',flush=True)
             if error: failures.append({'country':country['code'],'error':error})
-    if not articles: raise SystemExit('No verified articles; existing snapshot preserved.')
+    if not articles and failures: raise SystemExit('Collection failed; existing snapshot preserved.')
     articles.sort(key=lambda x:x['date'],reverse=True)
-    data={'articleLimitPerCountry':COUNTRY_LIMIT,'window':'month','start':START.isoformat(),'end':END.isoformat(),'collectedAt':dt.datetime.now(dt.timezone.utc).isoformat(),'countries':countries,'articles':articles,'failures':failures}
+    data={'articleLimitPerCountry':COUNTRY_LIMIT,'window':'day','start':START.isoformat(),'end':END.isoformat(),'collectedAt':dt.datetime.now(dt.timezone.utc).isoformat(),'countries':countries,'articles':articles,'failures':failures}
     target=ROOT/'news.js'
     temp=target.with_suffix('.tmp')
     temp.write_text('window.NEWS = '+json.dumps(data,ensure_ascii=False,separators=(',',':'))+';\n')
