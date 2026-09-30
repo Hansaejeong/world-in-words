@@ -1,6 +1,7 @@
 """Collect a dated, personal news-reader snapshot from Google News RSS.
 Run: python3 scripts/collect.py [YYYY-MM-DD]. No API key required.
 """
+from zoneinfo import ZoneInfo
 import concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -56,11 +57,8 @@ SOURCES = {
  'AU':['abc.net.au/news','sbs.com.au/news','smh.com.au','theage.com.au'],
  'NZ':['rnz.co.nz','nzherald.co.nz','stuff.co.nz','1news.co.nz'],
 }
-END = dt.date.fromisoformat(sys.argv[1]) if len(sys.argv)>1 else dt.datetime.now(dt.timezone.utc).date()
-import calendar
-pm = END.month-1 or 12
-py = END.year-(END.month == 1)
-START = dt.date(py,pm,min(END.day,calendar.monthrange(py,pm)[1]))
+END = dt.date.fromisoformat(sys.argv[1]) if len(sys.argv)>1 else dt.datetime.now(ZoneInfo('Asia/Seoul')).date()
+START = END - dt.timedelta(days=1)
 
 def collect(c):
     code,name,ko,region,lang,term,language = c
@@ -76,7 +74,7 @@ def collect(c):
         seen=set()
         for item in entries:
             date=email.utils.parsedate_to_datetime(item.findtext('pubDate')).astimezone(dt.timezone.utc)
-            if not START <= date.date() <= END: continue
+            if not START <= date.astimezone(ZoneInfo("Asia/Seoul")).date() <= END: continue
             source=item.find('source')
             publisher=source.text if source is not None else 'News'
             title=html.unescape(item.findtext('title',''))
@@ -87,14 +85,13 @@ def collect(c):
             link=item.findtext('link','')
             if not link.startswith('https://'): continue
             items.append({'id':hashlib.sha256((code+link).encode()).hexdigest()[:12],'country':code,'title':title,'date':date.isoformat(),'source':publisher,'sourceUrl':source.get('url','') if source is not None else '', 'url':link,'lang':lang,'direction':'rtl' if lang=='ar' else 'ltr'})
-        # Balanced weekly sample and publisher diversity. Dates are never synthesized.
+        # Most recent real headlines, with a maximum of five per publisher.
         selected=[]; publishers={}
-        for week in range(5):
-            pool=[x for x in items if min(4,(dt.date.fromisoformat(x['date'][:10])-START).days//7)==week]
-            for x in pool:
-                if publishers.get(x['source'],0)>=2: continue
-                selected.append(x); publishers[x['source']]=publishers.get(x['source'],0)+1
-                if len([a for a in selected if a in pool])>=4: break
+        for x in sorted(items, key=lambda a: a['date'], reverse=True):
+            if publishers.get(x['source'], 0) >= 5: continue
+            selected.append(x)
+            publishers[x['source']] = publishers.get(x['source'], 0) + 1
+            if len(selected) >= 20: break
         return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},selected,None
     except Exception as e:
         return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},[],str(e)
