@@ -9,7 +9,6 @@ const labels = {Asia:'아시아',Europe:'유럽',Americas:'아메리카',Africa:
 function render() {
  $('#today').textContent = currentDay.replaceAll('-', '.'); $('#today').dateTime = currentDay;
  if (!data) {$('#article-list').textContent = '헤드라인을 불러오지 못했습니다.'; return;}
- $('#period').textContent = `${data.start.replaceAll('-', '.')} - ${data.end.replaceAll('-', '.')}`;
  const countries = new Map(data.countries.map(c => [c.code,c]));
  $('#countries').innerHTML = Object.entries(labels).map(([region,label]) => `<p class="region">${label}</p>` + data.countries.filter(c => c.region === region).map(c => `<button data-country="${c.code}">${esc(c.ko)} <bdi class="country-native" lang="${c.lang}">${esc(c.name)}</bdi></button>`).join('')).join('');
  document.querySelectorAll('[data-country]').forEach(b => {b.classList.toggle('selected',b.dataset.country === country);b.setAttribute('aria-pressed',String(b.dataset.country === country));});
