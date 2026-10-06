@@ -1,4 +1,5 @@
 import { COUNTRIES, SOURCES, ASSETS, INITIAL_NEWS } from './generated.mjs';
+import { readArticle, publisherUrl } from './reader.mjs';
 
 export const koreaDay = (date = new Date()) => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -21,7 +22,8 @@ export async function parseFeed(xml, country, today) {
     if (!title || !url.startsWith('https://')) continue;
     const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(country.code + url));
     const id = [...new Uint8Array(hash)].map(x => x.toString(16).padStart(2, '0')).join('').slice(0,12);
-    items.push({id, country:country.code, title, date:date.toISOString(), source,
+    const sourceUrl=decode(item[1].match(/<source\b[^>]*url="([^"]+)"/i)?.[1] || '');
+    items.push({id, country:country.code, title, date:date.toISOString(), source, url, sourceUrl, feedRank:items.length,
       lang:country.lang, direction:country.lang === 'ar' ? 'rtl' : 'ltr'});
   }
   const seen = new Set();
@@ -59,7 +61,10 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
 });
 async function readSaved(env, today) {
   const object = await env.BUCKET.get('headlines/latest.json');
-  return forToday(object ? await object.json() : INITIAL_NEWS, today);
+  const data=forToday(object ? await object.json() : INITIAL_NEWS, today);
+  const initial=new Map(INITIAL_NEWS.articles.map(a => [a.id,a]));
+  data.articles=data.articles.map(a => ({...initial.get(a.id),...a}));
+  return data;
 }
 let pending;
 export async function refreshHeadlines(env) {
@@ -93,8 +98,27 @@ export async function refreshHeadlines(env) {
 export default {
   async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname;
+    if (path === '/api/article' && request.method === 'GET') {
+      const id=new URL(request.url).searchParams.get('id');
+      const data=await readSaved(env,koreaDay()), article=data.articles.find(a => a.id===id);
+      if(!article)return json({error:'Article not found'},404);
+      try {return json(await readArticle(article,env));}
+      catch(error) {
+        console.warn('Article reader unavailable',error.message);
+        return json({unavailable:true,paragraphs:[],url:article.publisherUrl || article.url || article.sourceUrl || null});
+      }
+    }
+    if (path === '/api/article-snapshot' && request.method === 'POST') {
+      const data=await readSaved(env,koreaDay()), incoming=await request.json();
+      const article=data.articles.find(a => a.id===incoming.id);
+      if(!article || !publisherUrl(incoming.url,article.country) || !Array.isArray(incoming.paragraphs))return json({error:'Verified publisher article required'},400);
+      const paragraphs=incoming.paragraphs.filter(p => typeof p==='string' && p.trim()).map(p => p.trim());
+      if(!paragraphs.length || paragraphs.join('').length>200000)return json({error:'Invalid article text'},400);
+      await env.BUCKET.put('articles/'+article.id+'.json',JSON.stringify({url:incoming.url,paragraphs,lang:article.lang,source:article.source}));
+      return json({id:article.id,paragraphs:paragraphs.length});
+    }
     if (path === '/api/sources' && request.method === 'GET') {
-      return json({date:koreaDay(),countries:COUNTRIES.map(c => ({...c,feeds:[String(feedUrl(c,koreaDay()))]}))});
+      return json({date:koreaDay(),articleFields:['id','country','title','source','date','url','sourceUrl'],countries:COUNTRIES.map(c => ({...c,feeds:[String(feedUrl(c,koreaDay()))]}))});
     }
     if (path === '/api/snapshot') {
       if (request.method !== 'POST') return json({error:'POST required'},405);
@@ -103,6 +127,7 @@ export default {
         if (body.length > 4000000) return json({error:'Snapshot too large'},413);
         const incoming = JSON.parse(body), today = koreaDay();
         if (incoming.end !== today || !Array.isArray(incoming.articles)) return json({error:'Current-day snapshot required'},400);
+        const previous=await readSaved(env,today), byId=new Map(previous.articles.map(a => [a.id,a]));
         const articles = [], seen = new Set();
         for (const article of incoming.articles) {
           const country = COUNTRIES.find(c => c.code === article.country);
@@ -112,9 +137,14 @@ export default {
           const key = country.code + article.title;
           if (seen.has(key) || articles.filter(a => a.country === country.code).length >= 50) continue;
           seen.add(key);
+          const old=byId.get(String(article.id));
+          const safeLink=value => {try{return new URL(value).protocol==='https:'?value:undefined;}catch{return undefined;}};
           articles.push({id:String(article.id || key),country:country.code,title:article.title,
             date:date.toISOString(),source:String(article.source || ''),lang:country.lang,
-            direction:country.lang === 'ar' ? 'rtl' : 'ltr'});
+            direction:country.lang === 'ar' ? 'rtl' : 'ltr',
+            url:safeLink(article.url || old?.url),publisherUrl:safeLink(article.publisherUrl || old?.publisherUrl),
+            sourceUrl:safeLink(article.sourceUrl || old?.sourceUrl),
+            feedRank:Number.isFinite(article.feedRank)?article.feedRank:old?.feedRank,topNews:article.topNews === true});
         }
         if (!articles.length) return json({error:'No verified current-day headlines'},400);
         const data = {...empty(today),collectedAt:new Date().toISOString(),articles,

@@ -14,7 +14,7 @@ for node in tree.body:
                 settings[target.id] = ast.literal_eval(node.value)
 countries = [dict(zip(('code','name','ko','region','lang','term','language'),c)) for c in settings['COUNTRIES']]
 assets = {}
-for name, mime in [('index.html','text/html'),('style.css','text/css'),('app.js','text/javascript')]:
+for name, mime in [('index.html','text/html'),('style.css','text/css'),('app.js','text/javascript'),('ranking.js','text/javascript'),('translation.js','text/javascript')]:
     assets['/' + name] = {'body':(ROOT / name).read_text(),'type':mime + '; charset=utf-8'}
     shutil.copyfile(ROOT / name, ROOT / 'dist' / name)
 news = json.loads((ROOT / 'news.js').read_text().removeprefix('window.NEWS = ').strip().removesuffix(';'))
@@ -26,4 +26,5 @@ generated = '\n'.join(f'export const {key} = {json.dumps(value, ensure_ascii=Fal
     'COUNTRIES':countries,'SOURCES':settings['SOURCES'],'ASSETS':assets,'INITIAL_NEWS':news}.items())
 (output / 'generated.mjs').write_text(generated)
 shutil.copyfile(ROOT / 'server/worker.mjs', output / 'index.js')
+shutil.copyfile(ROOT / 'server/reader.mjs', output / 'reader.mjs')
 print('Built Sites Worker and synchronized local page assets.')

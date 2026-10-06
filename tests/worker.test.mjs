@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { koreaDay, parseFeed, refreshHeadlines } from '../dist/server/index.js';
+import { extractArticle, publisherUrl } from '../dist/server/reader.mjs';
+import '../ranking.js';
+import '../translation.js';
 
 const country = {code:'FR',lang:'fr'};
 const rss = (date,title='A &amp; B - News',url='https://news.google.com/rss/articles/example') =>
@@ -61,4 +64,53 @@ test('scheduled upload accepts only current-day headlines and persists them', as
   assert.deepEqual(JSON.parse(storage.read()).articles.map(a => a.id),['new']);
   const sources = await worker.fetch(new Request('https://example.com/api/sources'),env,{});
   assert.equal((await sources.json()).countries.length,24);
+});
+
+test('article reader extracts text without executable HTML and respects paid articles', () => {
+  const paragraph='A public article paragraph explaining the government election results in detail. '.repeat(3);
+  const html='<script type="application/ld+json">'+JSON.stringify({'@type':'NewsArticle',articleBody:paragraph+'\nSecond paragraph with more information.'})+'</script>';
+  assert.equal(extractArticle(html).paragraphs.length,2);
+  assert.equal(extractArticle('<script type="application/ld+json">'+JSON.stringify({'@type':'NewsArticle',isAccessibleForFree:false,articleBody:paragraph})+'</script>').restricted,true);
+  assert.deepEqual(extractArticle('<article><p>'+paragraph+'</p><p class="related">Unrelated advertising content that should be excluded from the reader</p></article>').paragraphs,[paragraph.trim()]);
+  assert.equal(publisherUrl('https://localhost/admin','KR'),null);
+  assert.equal(publisherUrl('https://yna.co.kr.attacker.example/article','KR'),null);
+  assert.ok(publisherUrl('https://www.yna.co.kr/view/article','KR'));
+});
+
+test('importance prioritizes public issues with coverage across publishers', () => {
+  const articles=[{id:'a',lang:'en',source:'One',title:'Government election results change national policy'},
+    {id:'b',lang:'en',source:'Two',title:'National election results announced by government'},
+    {id:'c',lang:'en',source:'Three',title:'A singer releases an acoustic studio album'}];
+  const scores=rankHeadlines(articles);
+  assert.ok(scores.get('a')>scores.get('c'));
+  assert.ok(scores.get('b')>scores.get('c'));
+});
+
+test('translation falls back after rate limits and respects the alternate byte limit', async () => {
+  const original=globalThis.fetch;let googleRequests=0, alternateRequests=0;
+  globalThis.fetch=async url => {
+    url=new URL(url);
+    if(url.hostname==='translate.googleapis.com'){googleRequests++;return new Response('',{status:429});}
+    assert.equal(url.hostname,'api.mymemory.translated.net');
+    assert.ok(new TextEncoder().encode(url.searchParams.get('q')).length<=450);
+    assert.equal(url.searchParams.get('langpair'),'en|ko');alternateRequests++;
+    return Response.json({responseStatus:200,responseData:{translatedText:'한국어 번역'}});
+  };
+  try {
+    const result=await translateNewsText('Government election results. '.repeat(40),'en-GB');
+    assert.ok(result.includes('한국어 번역'));assert.equal(googleRequests,1);assert.ok(alternateRequests>1);
+  } finally {globalThis.fetch=original;}
+});
+
+test('saved article text is readable inside the site and rejects untrusted publishers', async () => {
+  const article={id:'article-reader-check',country:'US',title:'A current article',source:'NPR',lang:'en',date:new Date().toISOString()};
+  const values=new Map([['headlines/latest.json',JSON.stringify({articles:[article],collectedAt:new Date().toISOString()})]]);
+  const env={BUCKET:{get:async key => values.has(key) ? {json:async () => JSON.parse(values.get(key))} : null,put:async (key,value) => values.set(key,value)}};
+  const payload={id:article.id,url:'https://www.npr.org/article',paragraphs:['Original article paragraph.']};
+  const written=await worker.fetch(new Request('https://example.com/api/article-snapshot',{method:'POST',body:JSON.stringify(payload)}),env,{});
+  assert.equal(written.status,200);
+  const read=await worker.fetch(new Request('https://example.com/api/article?id='+article.id),env,{});
+  assert.deepEqual((await read.json()).paragraphs,payload.paragraphs);
+  payload.url='https://127.0.0.1/admin';
+  assert.equal((await worker.fetch(new Request('https://example.com/api/article-snapshot',{method:'POST',body:JSON.stringify(payload)}),env,{})).status,400);
 });
