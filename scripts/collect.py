@@ -65,16 +65,24 @@ def collect(c):
     code,name,ko,region,lang,term,language = c
     ceid_lang = {'en-GB':'en','en-US':'en','en-CA':'en','en-ZA':'en','en-NG':'en','en-KE':'en','en-AU':'en','en-NZ':'en','es-419':'es-419','pt-419':'pt-419'}.get(lang,lang)
     try:
-        entries=[]
+        entries=[]; source_errors=[]
         for site in SOURCES[code]:
             query=f'site:{site} after:{(START-dt.timedelta(days=1)).isoformat()} before:{(END+dt.timedelta(days=1)).isoformat()}'
             url='https://news.google.com/rss/search?'+urllib.parse.urlencode({'q':query,'hl':lang,'gl':code,'ceid':f'{code}:{ceid_lang}'})
-            raw=subprocess.run(['curl','--fail','--location','--silent','--show-error','--retry','2','--max-time','25',url],capture_output=True,check=True).stdout
-            entries.extend(ET.fromstring(raw).findall('./channel/item'))
+            try:
+                raw=subprocess.run(['curl','--fail','--location','--silent','--show-error','--retry','1','--max-time','15',url],capture_output=True,check=True).stdout
+                entries.extend(ET.fromstring(raw).findall('./channel/item'))
+            except Exception:
+                source_errors.append(site)
+        if len(source_errors) == len(SOURCES[code]):
+            raise RuntimeError('All publisher feeds unavailable')
         items=[]
         seen=set()
         for item in entries:
-            date=email.utils.parsedate_to_datetime(item.findtext('pubDate')).astimezone(dt.timezone.utc)
+            try:
+                date=email.utils.parsedate_to_datetime(item.findtext('pubDate')).astimezone(dt.timezone.utc)
+            except (TypeError, ValueError):
+                continue
             if not START <= date.astimezone(ZoneInfo("Asia/Seoul")).date() <= END: continue
             source=item.find('source')
             publisher=source.text if source is not None else 'News'
@@ -97,7 +105,7 @@ def collect(c):
             selected_ids = {x['id'] for x in selected}
             remaining = [x for x in sorted(items, key=lambda a: a['date'], reverse=True) if x['id'] not in selected_ids]
             selected.extend(remaining[:COUNTRY_LIMIT - len(selected)])
-        return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},selected,None
+        return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},selected,('Some publisher feeds unavailable: '+', '.join(source_errors)) if source_errors else None
     except Exception as e:
         return {'code':code,'name':name,'ko':ko,'region':region,'lang':lang,'language':language},[],str(e)
 
@@ -115,4 +123,9 @@ if __name__=='__main__':
     temp=target.with_suffix('.tmp')
     temp.write_text('window.NEWS = '+json.dumps(data,ensure_ascii=False,separators=(',',':'))+';\n')
     temp.replace(target)
+    deployed=ROOT/'dist/news.js'
+    deployed.parent.mkdir(parents=True,exist_ok=True)
+    staged=deployed.with_suffix('.tmp')
+    staged.write_text(target.read_text())
+    staged.replace(deployed)
     print('TOTAL',len(articles),'COUNTRIES',len({x['country'] for x in articles}))

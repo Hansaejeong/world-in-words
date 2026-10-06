@@ -1,0 +1,9 @@
+{
+  "name": "world-in-words",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "python3 scripts/build.py",
+    "test": "node --test tests/worker.test.mjs"
+  }
+}

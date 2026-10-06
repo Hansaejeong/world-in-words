@@ -33,7 +33,6 @@ def refresh_loop():
             collected = dt.datetime.fromisoformat(data['collectedAt']).astimezone(KST)
             if collected.date() < now.date() or data.get('articleLimitPerCountry') != 50 or data.get('window') != 'day' or (now - collected).total_seconds() >= 900:
                 subprocess.run([sys.executable, str(ROOT / 'scripts/collect.py'), now.date().isoformat()], check=True, timeout=600)
-                (ROOT / 'dist/news.js').write_text((ROOT / 'news.js').read_text())
         except Exception as error:
             print('Headline refresh failed; previous snapshot retained:', error, flush=True)
         # Wake exactly at midnight; recheck within five minutes after a failure.
@@ -42,6 +41,10 @@ def refresh_loop():
         threading.Event().wait(delay)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
     def do_GET(self):
         if self.path.split('?')[0] == '/api/headlines':
             try:
@@ -58,8 +61,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
 if __name__ == '__main__':
-    threading.Thread(target=refresh_loop, daemon=True).start()
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    server = http.server.ThreadingHTTPServer(('0.0.0.0', port), functools.partial(Handler, directory=str(ROOT / 'dist')))
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', port), functools.partial(Handler, directory=str(ROOT / 'dist')))
+    threading.Thread(target=refresh_loop, daemon=True).start()
     print(f'World In Words: http://localhost:{port} — midnight Asia/Seoul refresh', flush=True)
     server.serve_forever()

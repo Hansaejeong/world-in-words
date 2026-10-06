@@ -29,14 +29,16 @@ async function refresh() {
  if (loading) return; loading = true; $('#update-status').textContent = '';
  try {
   const response = await fetch(`api/headlines?date=${currentDay}`, {cache:'no-store',signal:AbortSignal.timeout(20000)});
-  if (!response.ok) throw new Error('unavailable');
+  if (response.status === 401 || response.status === 403) throw new Error('로그인이 필요합니다.');
+  if (response.status === 404 || !response.headers.get('content-type')?.includes('application/json')) throw new Error('자동 갱신 서버로 열어주세요.');
+  if (!response.ok) throw new Error('기사 수집 연결이 지연되고 있습니다.');
   const fresh = await response.json();
   if (!Array.isArray(fresh.articles) || !Array.isArray(fresh.countries) ) throw new Error('invalid');
   data = fresh; render();
-  const collectedDay = day(new Date(data.collectedAt));
+  const collectedDay = data.collectedAt ? day(new Date(data.collectedAt)) : '';
   $('#update-status').textContent = collectedDay !== currentDay ? '새 제목 수집 중' : data.failures?.length ? '일부 국가 수집 지연' : '';
- } catch {
-  $('#update-status').textContent = '연결 재시도 중';
+ } catch (error) {
+  $('#update-status').textContent = error.message?.includes('필요') || error.message?.includes('서버로') || error.message?.includes('지연') ? error.message : '기사 연결 재시도 중';
  } finally {loading = false;}
 }
 function scheduleMidnight() {
