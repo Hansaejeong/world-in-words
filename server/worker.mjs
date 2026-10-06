@@ -10,6 +10,10 @@ const decode = text => text.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
   .replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (_, name) => ({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '})[name]);
 const field = (xml, name) => decode(xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, 'i'))?.[1] || '').trim();
 
+// A Korean publisher domain can also serve English editions. RSS locale alone
+// does not guarantee a Korean title; retain original titles containing Hangul.
+const nativeTitle = (country, title) => country !== 'KR' || /[가-힣]/u.test(title);
+
 export async function parseFeed(xml, country, today) {
   if (!/<rss[\s>]/i.test(xml) || !/<channel[\s>]/i.test(xml)) throw new Error('Invalid RSS response');
   const items = [];
@@ -19,7 +23,7 @@ export async function parseFeed(xml, country, today) {
     const source = field(item[1], 'source'), url = field(item[1], 'link');
     let title = field(item[1], 'title');
     if (source && title.endsWith(' - ' + source)) title = title.slice(0, -source.length - 3);
-    if (!title || !url.startsWith('https://')) continue;
+    if (!title || !url.startsWith('https://') || !nativeTitle(country.code,title)) continue;
     const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(country.code + url));
     const id = [...new Uint8Array(hash)].map(x => x.toString(16).padStart(2, '0')).join('').slice(0,12);
     const sourceUrl=decode(item[1].match(/<source\b[^>]*url="([^"]+)"/i)?.[1] || '');
@@ -57,7 +61,7 @@ const empty = today => ({start:today,end:today,window:'day',articleLimitPerCount
 const damagedText = value => typeof value === 'string' && /(?:\\?u[0-9a-f]{4}){2,}/i.test(value);
 function forToday(data, today) {
   return {...(data || empty(today)), start:today, end:today, window:'day', countries:COUNTRIES,
-    articles:(data?.articles || []).filter(a => koreaDay(new Date(a.date)) === today)};
+    articles:(data?.articles || []).filter(a => koreaDay(new Date(a.date)) === today && nativeTitle(a.country,a.title))};
 }
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status, headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'},
@@ -139,7 +143,7 @@ export default {
           const country = COUNTRIES.find(c => c.code === article.country);
           const date = new Date(article.date);
           if (!country || !Number.isFinite(date.getTime()) || koreaDay(date) !== today ||
-              typeof article.title !== 'string' || !article.title.trim()) continue;
+              typeof article.title !== 'string' || !article.title.trim() || !nativeTitle(country.code,article.title)) continue;
           const key = country.code + article.title;
           if (seen.has(key) || articles.filter(a => a.country === country.code).length >= 50) continue;
           seen.add(key);

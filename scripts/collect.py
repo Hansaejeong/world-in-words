@@ -2,7 +2,7 @@
 Run: python3 scripts/collect.py [YYYY-MM-DD]. No API key required.
 """
 from zoneinfo import ZoneInfo
-import concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
+import concurrent.futures, datetime as dt, email.utils, hashlib, html, json, pathlib, re, sys, urllib.parse, subprocess, xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COUNTRIES = [
@@ -88,6 +88,8 @@ def collect(c):
             publisher=source.text if source is not None else 'News'
             title=html.unescape(item.findtext('title',''))
             if title.endswith(' - '+publisher): title=title[:-len(publisher)-3]
+            # Korean domains include foreign-language editions; keep Korean originals.
+            if code == 'KR' and not re.search('[가-힣]', title): continue
             if any(x in (title+' '+publisher).casefold() for x in ['rashifal','राशिफल','cbc gem','horoscope','crossword','sudoku','lottery','zeit shop','forum.hani','जनसत्ता न्यूज डेस्क','exclusive news stories','news videos in hindi','tin tức, sự kiện liên quan','live2 digital','stuff quiz','pdf::','edicionpapel','hausa.premiumtimes','運気','運勢','画像・写真','hatsarin','yaw on','yawon','priya mehra']): continue
             if not title or title.casefold() in seen: continue
             seen.add(title.casefold())

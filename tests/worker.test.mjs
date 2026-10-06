@@ -29,7 +29,7 @@ test('malformed upstream content is a failure; an empty RSS is a valid empty day
 
 test('unattended writer saves today and readers return the saved snapshot', async () => {
   const original = globalThis.fetch, storage = bucket();
-  globalThis.fetch = async url => new Response(rss(new Date().toUTCString(),'Today - News','https://news.google.com/rss/articles/' + new URL(url).searchParams.get('gl')));
+  globalThis.fetch = async url => new Response(rss(new Date().toUTCString(),new URL(url).searchParams.get('gl') === 'KR' ? '오늘의 소식 - News' : 'Today - News','https://news.google.com/rss/articles/' + new URL(url).searchParams.get('gl')));
   try {
     const data = await refreshHeadlines({BUCKET:storage});
     assert.equal(data.articles.length,24);
@@ -134,4 +134,29 @@ test('saved article text is readable inside the site and rejects untrusted publi
   assert.deepEqual((await read.json()).paragraphs,payload.paragraphs);
   payload.url='https://127.0.0.1/admin';
   assert.equal((await worker.fetch(new Request('https://example.com/api/article-snapshot',{method:'POST',body:JSON.stringify(payload)}),env,{})).status,400);
+});
+
+
+test('Korean collection keeps original Hangul titles and excludes English edition titles', async () => {
+  const korean={code:'KR',lang:'ko'}, date=new Date().toUTCString(), today=koreaDay();
+  assert.equal((await parseFeed(rss(date,'Government announces new policy - News'),korean,today)).length,0);
+  const title='BTS, UN에서 새 프로젝트 발표';
+  assert.equal((await parseFeed(rss(date,title+' - News'),korean,today))[0].title,title);
+  assert.equal((await parseFeed(rss(date,'Government announces new policy - News'),country,today)).length,1);
+});
+
+test('scheduled uploads and older snapshots cannot reintroduce English titles in Korea', async () => {
+  const articles=[
+    {id:'ko',country:'KR',title:'한국어 원문 제목',date:new Date().toISOString(),source:'경향신문'},
+    {id:'en',country:'KR',title:'English edition headline',date:new Date().toISOString(),source:'경향신문'},
+    {id:'us',country:'US',title:'English original headline',date:new Date().toISOString(),source:'NPR'},
+  ];
+  const storage=bucket({articles,collectedAt:new Date().toISOString()}), env={BUCKET:storage};
+  const response=await worker.fetch(new Request('https://example.com/api/headlines'),env,{});
+  assert.deepEqual((await response.json()).articles.map(a => a.id),['ko','us']);
+  const uploaded=await worker.fetch(new Request('https://example.com/api/snapshot',{
+    method:'POST',body:JSON.stringify({end:koreaDay(),articles}),
+  }),env,{});
+  assert.equal(uploaded.status,200);
+  assert.deepEqual(JSON.parse(storage.read()).articles.map(a => a.id),['ko','us']);
 });
