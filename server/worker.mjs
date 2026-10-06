@@ -32,16 +32,20 @@ export async function parseFeed(xml, country, today) {
   }).slice(0,50);
 }
 
-async function collectCountry(country, today) {
+function feedUrl(country, today) {
   const yesterday = new Date(today + 'T00:00:00Z'); yesterday.setUTCDate(yesterday.getUTCDate()-1);
   const tomorrow = new Date(today + 'T00:00:00Z'); tomorrow.setUTCDate(tomorrow.getUTCDate()+1);
   const sites = SOURCES[country.code].map(site => 'site:' + site).join(' OR ');
   const lang = country.lang.startsWith('en-') ? 'en' : country.lang;
   const url = new URL('https://news.google.com/rss/search');
   url.search = new URLSearchParams({q:`(${sites}) after:${yesterday.toISOString().slice(0,10)} before:${tomorrow.toISOString().slice(0,10)}`, hl:country.lang, gl:country.code, ceid:`${country.code}:${lang}`});
-  const response = await fetch(url, {signal:AbortSignal.timeout(12000)});
+  return url;
+}
+async function collectCountry(country, today) {
+  const response = await fetch(feedUrl(country,today), {signal:AbortSignal.timeout(6000)});
+  const body = await response.text();
   if (!response.ok) throw new Error('RSS status ' + response.status);
-  return parseFeed(await response.text(), country, today);
+  return parseFeed(body, country, today);
 }
 
 const empty = today => ({start:today,end:today,window:'day',articleLimitPerCountry:50,
@@ -62,7 +66,11 @@ export async function refreshHeadlines(env) {
   if (pending) return pending;
   pending = (async () => {
     const today = koreaDay(), previous = await readSaved(env, today);
-    const results = await Promise.allSettled(COUNTRIES.map(c => collectCountry(c, today)));
+    const results = [];
+    // Workers allow only a few simultaneous HTTP connections. Always drain bodies.
+    for (let i=0;i<COUNTRIES.length;i+=4) {
+      results.push(...await Promise.allSettled(COUNTRIES.slice(i,i+4).map(c => collectCountry(c,today))));
+    }
     const articles = [], failures = [];
     results.forEach((result,i) => {
       const country = COUNTRIES[i];
@@ -73,7 +81,7 @@ export async function refreshHeadlines(env) {
       }
     });
     // Never replace a good same-day snapshot with a total network failure.
-    if (failures.length === COUNTRIES.length) throw new Error('All RSS sources unavailable');
+    if (failures.length === COUNTRIES.length) throw new Error('All RSS sources unavailable: ' + failures.slice(0,3).map(f => f.error).join(', '));
     const data = {...empty(today), collectedAt:new Date().toISOString(), failures,
       articles:articles.sort((a,b) => b.date.localeCompare(a.date))};
     await env.BUCKET.put('headlines/latest.json', JSON.stringify(data), {httpMetadata:{contentType:'application/json'}});
@@ -85,6 +93,39 @@ export async function refreshHeadlines(env) {
 export default {
   async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname;
+    if (path === '/api/sources' && request.method === 'GET') {
+      return json({date:koreaDay(),countries:COUNTRIES.map(c => ({...c,feeds:[String(feedUrl(c,koreaDay()))]}))});
+    }
+    if (path === '/api/snapshot') {
+      if (request.method !== 'POST') return json({error:'POST required'},405);
+      try {
+        const body = await request.text();
+        if (body.length > 4000000) return json({error:'Snapshot too large'},413);
+        const incoming = JSON.parse(body), today = koreaDay();
+        if (incoming.end !== today || !Array.isArray(incoming.articles)) return json({error:'Current-day snapshot required'},400);
+        const articles = [], seen = new Set();
+        for (const article of incoming.articles) {
+          const country = COUNTRIES.find(c => c.code === article.country);
+          const date = new Date(article.date);
+          if (!country || !Number.isFinite(date.getTime()) || koreaDay(date) !== today ||
+              typeof article.title !== 'string' || !article.title.trim()) continue;
+          const key = country.code + article.title;
+          if (seen.has(key) || articles.filter(a => a.country === country.code).length >= 50) continue;
+          seen.add(key);
+          articles.push({id:String(article.id || key),country:country.code,title:article.title,
+            date:date.toISOString(),source:String(article.source || ''),lang:country.lang,
+            direction:country.lang === 'ar' ? 'rtl' : 'ltr'});
+        }
+        if (!articles.length) return json({error:'No verified current-day headlines'},400);
+        const data = {...empty(today),collectedAt:new Date().toISOString(),articles,
+          failures:Array.isArray(incoming.failures) ? incoming.failures : []};
+        await env.BUCKET.put('headlines/latest.json',JSON.stringify(data));
+        return json({collectedAt:data.collectedAt,end:today,articles:articles.length,failures:data.failures.length});
+      } catch (error) {
+        console.error('Snapshot update failed',error.message);
+        return json({error:'Snapshot update unavailable'},503);
+      }
+    }
     if (path === '/api/refresh' || path === '/api/headlines') {
       if (path === '/api/refresh' && request.method !== 'POST') return json({error:'POST required'},405);
       if (path === '/api/headlines' && request.method !== 'GET') return json({error:'GET required'},405);

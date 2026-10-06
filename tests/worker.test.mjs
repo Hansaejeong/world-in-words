@@ -47,3 +47,18 @@ test('total RSS outage preserves the last successful snapshot', async () => {
     assert.equal(storage.read(),JSON.stringify(initial));
   } finally {globalThis.fetch = original;}
 });
+
+test('scheduled upload accepts only current-day headlines and persists them', async () => {
+  const storage = bucket(), env = {BUCKET:storage};
+  const payload = {end:koreaDay(),articles:[
+    {id:'new',country:'FR',date:new Date().toISOString(),title:'New headline',source:'News'},
+    {id:'old',country:'FR',date:'2020-01-01T00:00:00Z',title:'Old headline'},
+  ]};
+  const response = await worker.fetch(new Request('https://example.com/api/snapshot', {
+    method:'POST',body:JSON.stringify(payload),
+  }),env,{});
+  assert.equal(response.status,200);
+  assert.deepEqual(JSON.parse(storage.read()).articles.map(a => a.id),['new']);
+  const sources = await worker.fetch(new Request('https://example.com/api/sources'),env,{});
+  assert.equal((await sources.json()).countries.length,24);
+});
