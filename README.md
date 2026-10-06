@@ -10,6 +10,8 @@ GET /api/headlines는 저장된 당일 기사만 반환합니다. 수집본이 �
 
 POST /api/refresh는 새 수집본을 저장하는 공유 갱신 경로입니다. 배포 서버의 직접 RSS 연결이 제한되면 GET /api/sources에서 공개 RSS 주소를 얻어 예약 작업이 직접 수집하고 POST /api/snapshot으로 저장합니다. 업로드는 당일 실제 발행 기사만 검증해서 저장합니다. 현재 owner-private Sites의 플랫폼 접근 경계로 보호됩니다. 사이트를 공개로 변경하려면 이 쓰기 경로에 별도 인증을 먼저 추가해야 합니다.
 
+업로드 본문은 UTF-8 JSON 바이트로 직접 전송합니다. JSON을 curl 설정 파일의 `data =` 문자열 안에 넣으면 유니코드 이스케이프가 손상될 수 있습니다. `python3 scripts/upload_snapshot.py <현재 Sites URL>`은 안전하게 전송한 뒤 저장된 제목·언론사가 원본과 일치하는지 확인합니다. 서버는 연속된 `uXXXX` 또는 중복 이스케이프 형태의 손상된 제목·언론사를 발견하면 전체 업로드를 거부하고 기존 수집본을 보존합니다.
+
 ## 클라우드 예약 작업
 
 매 실행은 Sites get_site로 동일 Site를 다시 열고, 현재 live URL과 플랫폼 서비스 접근 자격을 얻습니다. 자격은 메모리에서만 보관하며 해당 Site의 OAI-Sites-Authorization 헤더에만 사용합니다. POST /api/refresh를 호출합니다. 실패하면 GET /api/sources의 RSS를 직접 읽어 한국 시간 당일의 제목·언론사·실제 발행일만 추출하고 국가별 최대 50개를 POST /api/snapshot으로 업로드합니다. GET /api/headlines를 읽어 collectedAt, end, 실제 발행일, 오류 수를 확인합니다. RSS는 공개 소스이며 연결 앱이나 방문자 동의가 필요하지 않습니다. 전체 실패 시 잠시 후 한 번만 재시도하고 실패 상태를 보고합니다. 소스 수정·재배포는 일상 갱신에 필요하지 않습니다. 토큰을 소스·로그·예약 문구에 넣지 않습니다.

@@ -52,6 +52,9 @@ async function collectCountry(country, today) {
 
 const empty = today => ({start:today,end:today,window:'day',articleLimitPerCountry:50,
   collectedAt:null,countries:COUNTRIES,articles:[],failures:[]});
+// A JSON body passed through curl's config parser can lose Unicode backslashes.
+// Reject the whole upload so a damaged snapshot never replaces readable news.
+const damagedText = value => typeof value === 'string' && /(?:\\?u[0-9a-f]{4}){2,}/i.test(value);
 function forToday(data, today) {
   return {...(data || empty(today)), start:today, end:today, window:'day', countries:COUNTRIES,
     articles:(data?.articles || []).filter(a => koreaDay(new Date(a.date)) === today)};
@@ -127,6 +130,9 @@ export default {
         if (body.length > 4000000) return json({error:'Snapshot too large'},413);
         const incoming = JSON.parse(body), today = koreaDay();
         if (incoming.end !== today || !Array.isArray(incoming.articles)) return json({error:'Current-day snapshot required'},400);
+        if (incoming.articles.some(a => damagedText(a.title) || damagedText(a.source))) {
+          return json({error:'Corrupted Unicode text; send UTF-8 JSON as the raw request body'},400);
+        }
         const previous=await readSaved(env,today), byId=new Map(previous.articles.map(a => [a.id,a]));
         const articles = [], seen = new Set();
         for (const article of incoming.articles) {

@@ -77,6 +77,27 @@ test('article reader extracts text without executable HTML and respects paid art
   assert.ok(publisherUrl('https://www.yna.co.kr/view/article','KR'));
 });
 
+test('snapshot preserves Korean Unicode and rejects damaged uploads without replacing it', async () => {
+  const storage = bucket(), env = {BUCKET:storage};
+  const article = {id:'korean',country:'KR',date:new Date().toISOString(),
+    title:'조희대 “계엄 전혀 협조 안해”',source:'한겨레'};
+  const upload = articles => worker.fetch(new Request('https://example.com/api/snapshot', {
+    method:'POST',body:JSON.stringify({end:koreaDay(),articles}),
+  }),env,{});
+  assert.equal((await upload([article])).status,200);
+  const saved = storage.read();
+  const response = await worker.fetch(new Request('https://example.com/api/headlines'),env,{});
+  const result = (await response.json()).articles[0];
+  assert.equal(result.title,article.title);
+  assert.equal(result.source,article.source);
+  for (const broken of [{...article,title:'uc870ud76cub300'},
+    {...article,source:'ud55cuaca8ub808'}, {...article,title:'\\u005cu조'}]) {
+    if (broken.title === '\\u005cu조') continue;
+    assert.equal((await upload([broken])).status,400);
+    assert.equal(storage.read(),saved);
+  }
+});
+
 test('importance prioritizes public issues with coverage across publishers', () => {
   const articles=[{id:'a',lang:'en',source:'One',title:'Government election results change national policy'},
     {id:'b',lang:'en',source:'Two',title:'National election results announced by government'},
