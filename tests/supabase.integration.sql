@@ -1,0 +1,35 @@
+begin;
+do $$
+declare r jsonb; uid uuid;
+begin
+ r:=public.wiw_api('signup',repeat('a',64),'{"username":"wiw_qa_transaction","password":"Test_password_2026"}');
+ assert r->'user'->>'username'='wiw_qa_transaction','signup failed';
+ select id into uid from wiw.users where username='wiw_qa_transaction';
+ assert (select password_hash<>'Test_password_2026' and password_hash like '$2a$12$%' from wiw.users where id=uid),'password not hashed';
+ r:=public.wiw_api('login',repeat('b',64),'{"username":"wiw_qa_transaction","password":"wrong_password"}');
+ assert r->>'error'='invalid_credentials','wrong password accepted';
+ r:=public.wiw_api('login',repeat('b',64),'{"username":"wiw_qa_transaction","password":"Test_password_2026"}');
+ assert r->'user'->>'username'='wiw_qa_transaction','login failed';
+ r:=public.wiw_api('view',repeat('a',64),'{"article":{"id":"qa_transaction_article","title":"원문 제목 보관 테스트","country":"KR","source":"검증","date":"2026-10-06T05:24:00Z","url":"https://example.com/original","lang":"ko"},"viewer":"qa_viewer"}');
+ assert r->>'historySaved'='true','history not saved';
+ perform public.wiw_api('view',repeat('a',64),'{"article":{"id":"qa_transaction_article","title":"원문 제목 보관 테스트","country":"KR","source":"검증","date":"2026-10-06T05:24:00Z","url":"https://example.com/original","lang":"ko"},"viewer":"qa_viewer"}');
+ assert (select view_count=1 from wiw.articles where id='qa_transaction_article'),'views not deduplicated';
+ r:=public.wiw_api('scrap',repeat('a',64),'{"article":{"id":"qa_transaction_article","title":"원문 제목 보관 테스트","country":"KR","source":"검증","date":"2026-10-06T05:24:00Z","url":"https://example.com/original","lang":"ko"},"saved":true}');
+ assert r->>'saved'='true','scrap failed';
+ r:=public.wiw_api('library',repeat('a',64),'{"kind":"history","year":"2026","q":"원문"}');
+ assert (r->>'total')::integer=1,'library lookup failed';
+ assert (r->'articles'->0->>'openCount')::integer=2,'repeat history not recorded';
+ r:=public.wiw_api('library',repeat('a',64),'{"kind":"scraps"}');
+ assert (r->>'total')::integer=1,'scrap lookup failed';
+ r:=public.wiw_api('article',repeat('c',64),'{"id":"qa_transaction_article"}');
+ assert r->>'error'='unauthorized','private article exposed';
+ insert into wiw.history(user_id,article_id,year) values(uid,'qa_transaction_article',2025);
+ r:=public.wiw_api('library',repeat('a',64),'{"kind":"history","year":"2025"}');
+ assert (r->>'total')::integer=1,'past-year lookup failed';
+ r:=public.wiw_api('scrap',repeat('a',64),'{"id":"qa_transaction_article","saved":false}');
+ assert r->>'saved'='false','unscrap failed';
+ r:=public.wiw_api('logout',repeat('a',64),'{}');
+ r:=public.wiw_api('session',repeat('a',64),'{}');
+ assert r->'user'='null'::jsonb,'logout did not revoke session';
+end $$;
+rollback;

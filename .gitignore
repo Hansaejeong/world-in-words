@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 *.tar.gz
 .DS_Store
+
+.env
+.env.local
+.env.*.local

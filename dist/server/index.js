@@ -1,5 +1,6 @@
 import { COUNTRIES, SOURCES, ASSETS, INITIAL_NEWS } from './generated.mjs';
 import { readArticle, publisherUrl } from './reader.mjs';
+import { accountRoutes, accountArticle, sealHeadlines } from './accounts.mjs';
 
 export const koreaDay = (date = new Date()) => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -105,9 +106,12 @@ export async function refreshHeadlines(env) {
 export default {
   async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname;
+    const findCurrent = async id => (await readSaved(env,koreaDay())).articles.find(a => a.id===id);
+    const accountResponse = await accountRoutes(request,env,findCurrent);
+    if(accountResponse)return accountResponse;
     if (path === '/api/article' && request.method === 'GET') {
       const id=new URL(request.url).searchParams.get('id');
-      const data=await readSaved(env,koreaDay()), article=data.articles.find(a => a.id===id);
+      const article=await findCurrent(id) || await accountArticle(request,env,id);
       if(!article)return json({error:'Article not found'},404);
       try {return json(await readArticle(article,env));}
       catch(error) {
@@ -184,7 +188,7 @@ export default {
             }
           } else ctx.waitUntil(refreshHeadlines(env).catch(error => console.error('Headlines refresh failed',error.message)));
         }
-        return json(data);
+        return json(await sealHeadlines(data,env));
       } catch (error) {
         console.error('Headlines storage failed',error.message);
         return json({...forToday(INITIAL_NEWS,koreaDay()),refreshError:true},503);

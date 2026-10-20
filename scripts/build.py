@@ -27,4 +27,5 @@ generated = '\n'.join(f'export const {key} = {json.dumps(value, ensure_ascii=Fal
 (output / 'generated.mjs').write_text(generated)
 shutil.copyfile(ROOT / 'server/worker.mjs', output / 'index.js')
 shutil.copyfile(ROOT / 'server/reader.mjs', output / 'reader.mjs')
+shutil.copyfile(ROOT / 'server/accounts.mjs', output / 'accounts.mjs')
 print('Built Sites Worker and synchronized local page assets.')
