@@ -17,7 +17,8 @@ export async function handle(request: Request): Promise<Response> {
   if(!secret)return new Response('Database unavailable',{status:503});
   const headers:Record<string,string>={'Content-Type':'application/json',apikey:secret};
   if(!secret.startsWith('sb_secret_'))headers.Authorization='Bearer '+secret;
-  const response=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/wiw_api',{method:'POST',headers,body:text,signal:AbortSignal.timeout(15000)});
+  const rpcName=payload.p_action==='library'?'wiw_library_search':'wiw_api';
+  const response=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/'+rpcName,{method:'POST',headers,body:text,signal:AbortSignal.timeout(15000)});
   if(!response.ok)return Response.json({error:'Database request failed'},{status:503});
   return new Response(await response.text(),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
  } catch {return new Response('Request unavailable',{status:503});}

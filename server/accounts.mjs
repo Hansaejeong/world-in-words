@@ -48,6 +48,12 @@ export async function rpc(env,action,session=null,input={}) {
 const reply=(data,status=200,headers={}) => Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 const errorStatus=result => result.error==='unauthorized' ? 401 : result.error==='rate_limited' ? 429 : 400;
 const errors={unauthorized:'로그인이 필요합니다.',rate_limited:'시도 횟수가 많습니다. 15분 후 다시 시도해주세요.',invalid_credentials:'아이디 또는 비밀번호를 확인해주세요.',username_taken:'이미 사용 중인 아이디입니다.'};
+const validDateRange=(from,to)=>{
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))return false;
+ const start=new Date(from+'T00:00:00Z'),end=new Date(to+'T00:00:00Z'),anniversary=new Date(start);
+ anniversary.setUTCFullYear(anniversary.getUTCFullYear()+1);
+ return Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start<=end && end<=anniversary;
+};
 async function inputJSON(request) {
  const text=await request.text();
  if(text.length>24000)throw new Error('요청이 너무 큽니다.');
@@ -99,9 +105,9 @@ export async function accountRoutes(request,env,findCurrent) {
    return reply(await rpc(env,'counts',session,{ids}));
   }
   if(path==='/api/library' && request.method==='GET') {
-   const kind=url.searchParams.get('kind') || 'history', year=url.searchParams.get('year') || '';
-   if(!['history','scraps'].includes(kind) || (year && !/^\d{4}$/.test(year)))return reply({error:'보관함 조건을 확인해주세요.'},400);
-   const result=await rpc(env,'library',session,{kind,year,q:(url.searchParams.get('q') || '').slice(0,200),country:url.searchParams.get('country') || 'all',sort:url.searchParams.get('sort'),page:Math.floor(Math.max(0,Math.min(10000,Number(url.searchParams.get('page')) || 0)))});
+   const kind=url.searchParams.get('kind') || 'history',from=url.searchParams.get('from') || '',to=url.searchParams.get('to') || '';
+   if(!['history','scraps'].includes(kind) || !validDateRange(from,to))return reply({error:'날짜는 하루 이상, 최대 1년 범위로 선택해주세요.'},400);
+   const result=await rpc(env,'library',session,{kind,from,to,title:(url.searchParams.get('title') || '').slice(0,200),country:url.searchParams.get('country') || 'all',publisher:(url.searchParams.get('publisher') || '').slice(0,300),sort:url.searchParams.get('sort'),page:Math.floor(Math.max(0,Math.min(10000,Number(url.searchParams.get('page')) || 0)))});
    return result.error ? reply({error:errors[result.error]},errorStatus(result)) : reply(result);
   }
   if(path==='/api/scrap' && request.method==='POST') {

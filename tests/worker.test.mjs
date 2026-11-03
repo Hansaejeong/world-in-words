@@ -9,9 +9,9 @@ const country = {code:'FR',lang:'fr'};
 const rss = (date,title='A &amp; B - News',url='https://news.google.com/rss/articles/example') =>
   `<rss><channel><item><title>${title}</title><source url="https://example.com">News</source><link>${url}</link><pubDate>${date}</pubDate></item></channel></rss>`;
 const bucket = initial => {
-  let value = initial ? JSON.stringify(initial) : null;
-  return {get:async () => value ? {json:async () => JSON.parse(value)} : null,
-    put:async (_,body) => {value = body;},read:() => value};
+  const values=new Map(initial ? [['headlines/latest.json',JSON.stringify(initial)]] : []);
+  return {get:async key => values.has(key) ? {json:async () => JSON.parse(values.get(key))} : null,
+    put:async (key,body) => {values.set(key,body);},read:(key='headlines/latest.json') => values.get(key),values};
 };
 
 test('Korean midnight removes yesterday and preserves original titles', async () => {
@@ -35,6 +35,7 @@ test('unattended writer saves today and readers return the saved snapshot', asyn
     assert.equal(data.articles.length,24);
     assert.ok(data.articles.every(a => koreaDay(new Date(a.date)) === koreaDay()));
     assert.equal(JSON.parse(storage.read()).collectedAt,data.collectedAt);
+    assert.equal(JSON.parse(storage.read('headlines/daily/'+koreaDay()+'.json')).collectedAt,data.collectedAt);
     const response = await worker.fetch(new Request('https://example.com/api/headlines'),{BUCKET:storage},{waitUntil:()=>{}});
     assert.equal(response.status,200); assert.equal((await response.json()).articles.length,24);
     assert.equal((await worker.fetch(new Request('https://example.com/api/refresh'),{BUCKET:storage},{})).status,405);
@@ -62,8 +63,22 @@ test('scheduled upload accepts only current-day headlines and persists them', as
   }),env,{});
   assert.equal(response.status,200);
   assert.deepEqual(JSON.parse(storage.read()).articles.map(a => a.id),['new']);
+  assert.deepEqual(JSON.parse(storage.read('headlines/daily/'+koreaDay()+'.json')).articles.map(a => a.id),['new']);
   const sources = await worker.fetch(new Request('https://example.com/api/sources'),env,{});
   assert.equal((await sources.json()).countries.length,24);
+});
+
+test('headline search validates a one-year range and filters title, country, and publisher',async()=>{
+ const today=koreaDay(),yesterday=new Date(today+'T00:00:00Z');yesterday.setUTCDate(yesterday.getUTCDate()-1);
+ const before=yesterday.toISOString().slice(0,10), storage=bucket();
+ const make=(id,country,title,source,date)=>({id,country,title,source,date:date+'T03:00:00Z',lang:'en'});
+ storage.values.set('headlines/daily/'+before+'.json',JSON.stringify({end:before,articles:[make('old-us','US','Election result','NPR',before)]}));
+ storage.values.set('headlines/daily/'+today+'.json',JSON.stringify({end:today,articles:[make('new-us','US','Election update','NPR',today),make('fr','FR','Économie','Le Monde',today)]}));
+ const response=await worker.fetch(new Request(`https://example.com/api/headlines?from=${before}&to=${today}&title=Election&country=US&publisher=NPR`),{BUCKET:storage},{waitUntil:()=>{}});
+ const result=await response.json();assert.equal(response.status,200);assert.deepEqual(result.articles.map(a=>a.id),['new-us','old-us']);
+ assert.deepEqual(result.publishers,['NPR']);
+ const invalid=await worker.fetch(new Request('https://example.com/api/headlines?from=2020-01-01&to='+today),{BUCKET:storage},{waitUntil:()=>{}});
+ assert.equal(invalid.status,400);
 });
 
 test('article reader extracts text without executable HTML and respects paid articles', () => {

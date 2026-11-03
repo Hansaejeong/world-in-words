@@ -41,6 +41,15 @@ test('language preference is validated and saved only for the current session',a
   assert.equal(invalid.status,400);assert.equal(f.calls.length,1);
  }finally{f.restore();}
 });
+test('library search forwards the four validated filters',async()=>{
+ const f=await fixture(p=>({articles:[],total:0,publishers:['NPR'],echo:p.p_input})),value='c'.repeat(64);
+ try{
+  const response=await accountRoutes(request('/api/library?kind=history&from=2026-01-01&to=2026-12-31&title=election&country=US&publisher=NPR',undefined,'__Host-wiw_session='+value),f.env,async()=>null);
+  assert.equal(response.status,200);assert.deepEqual(f.calls[0].p_input,{kind:'history',from:'2026-01-01',to:'2026-12-31',title:'election',country:'US',publisher:'NPR',sort:null,page:0});
+  const invalid=await accountRoutes(request('/api/library?kind=history&from=2025-01-01&to=2026-01-02',undefined,'__Host-wiw_session='+value),f.env,async()=>null);
+  assert.equal(invalid.status,400);assert.equal(f.calls.length,1);
+ }finally{f.restore();}
+});
 test('cross-origin writes are rejected before any database call',async()=>{
  const response=await accountRoutes(new Request(origin+'/api/account/signup',{method:'POST',headers:{Origin:'https://attacker.example','Content-Type':'application/json'},body:'{}'}),{},async()=>null);
  assert.equal(response.status,403);

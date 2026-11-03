@@ -74,6 +74,41 @@ async function readSaved(env, today) {
   data.articles=data.articles.map(a => ({...initial.get(a.id),...a}));
   return data;
 }
+const archiveKey = date => `headlines/daily/${date}.json`;
+async function saveSnapshot(env,data) {
+  const body=JSON.stringify(data), date=data.end || koreaDay(new Date(data.collectedAt));
+  await Promise.all([
+    env.BUCKET.put('headlines/latest.json',body,{httpMetadata:{contentType:'application/json'}}),
+    env.BUCKET.put(archiveKey(date),body,{httpMetadata:{contentType:'application/json'}}),
+  ]);
+}
+const rangeDates = (from,to) => {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))return null;
+  const start=new Date(from+'T00:00:00Z'),end=new Date(to+'T00:00:00Z');
+  if(!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start>end || to>koreaDay())return null;
+  const anniversary=new Date(start);anniversary.setUTCFullYear(anniversary.getUTCFullYear()+1);
+  if(end>anniversary)return null;
+  const dates=[];for(let value=new Date(end);value>=start;value.setUTCDate(value.getUTCDate()-1))dates.push(value.toISOString().slice(0,10));
+  return dates;
+};
+async function readRange(env,from,to,{title='',country='all',publisher=''}={}) {
+  const dates=rangeDates(from,to);if(!dates)throw new RangeError('Invalid date range');
+  const needle=title.normalize('NFKC').toLocaleLowerCase(),articles=[],publishers=new Set();let truncated=false;
+  for(const date of dates) {
+    const saved=await env.BUCKET.get(archiveKey(date)) || (date===koreaDay() ? await env.BUCKET.get('headlines/latest.json') : null);
+    if(!saved)continue;
+    const data=forToday(await saved.json(),date);
+    for(const article of data.articles) {
+      if(country!=='all' && article.country!==country)continue;
+      if(needle && !article.title.normalize('NFKC').toLocaleLowerCase().includes(needle))continue;
+      if(article.source)publishers.add(article.source);
+      if(publisher && article.source!==publisher)continue;
+      if(articles.length<2000)articles.push(article);else truncated=true;
+    }
+  }
+  return {start:from,end:to,window:from===to?'day':'range',articleLimitPerCountry:50,collectedAt:new Date().toISOString(),
+    countries:COUNTRIES,articles,publishers:[...publishers].sort((a,b)=>a.localeCompare(b)),failures:[],truncated};
+}
 let pending;
 export async function refreshHeadlines(env) {
   if (pending) return pending;
@@ -97,7 +132,7 @@ export async function refreshHeadlines(env) {
     if (failures.length === COUNTRIES.length) throw new Error('All RSS sources unavailable: ' + failures.slice(0,3).map(f => f.error).join(', '));
     const data = {...empty(today), collectedAt:new Date().toISOString(), failures,
       articles:articles.sort((a,b) => b.date.localeCompare(a.date))};
-    await env.BUCKET.put('headlines/latest.json', JSON.stringify(data), {httpMetadata:{contentType:'application/json'}});
+    await saveSnapshot(env,data);
     return forToday(data, koreaDay());
   })();
   try {return await pending;} finally {pending = null;}
@@ -163,7 +198,7 @@ export default {
         if (!articles.length) return json({error:'No verified current-day headlines'},400);
         const data = {...empty(today),collectedAt:new Date().toISOString(),articles,
           failures:Array.isArray(incoming.failures) ? incoming.failures : []};
-        await env.BUCKET.put('headlines/latest.json',JSON.stringify(data));
+        await saveSnapshot(env,data);
         return json({collectedAt:data.collectedAt,end:today,articles:articles.length,failures:data.failures.length});
       } catch (error) {
         console.error('Snapshot update failed',error.message);
@@ -178,7 +213,8 @@ export default {
       try {
         if (!env.BUCKET) throw new Error('Headline storage unavailable');
         if (path === '/api/refresh') return json(await refreshHeadlines(env));
-        let data = await readSaved(env, koreaDay());
+        const url=new URL(request.url), today=koreaDay();
+        let data = await readSaved(env,today);
         const age = Date.now() - Date.parse(data.collectedAt || '');
         if (!Number.isFinite(age) || age >= 900000 || koreaDay(new Date(data.collectedAt)) !== koreaDay()) {
           if (!data.articles.length) {
@@ -188,7 +224,11 @@ export default {
             }
           } else ctx.waitUntil(refreshHeadlines(env).catch(error => console.error('Headlines refresh failed',error.message)));
         }
-        return json(await sealHeadlines(data,env));
+        const from=url.searchParams.get('from') || today,to=url.searchParams.get('to') || from;
+        if(!rangeDates(from,to))return json({error:'날짜는 하루 이상, 최대 1년 범위로 선택해주세요.'},400);
+        const ranged=await readRange(env,from,to,{title:(url.searchParams.get('title') || '').slice(0,200),
+          country:url.searchParams.get('country') || 'all',publisher:(url.searchParams.get('publisher') || '').slice(0,300)});
+        return json(await sealHeadlines(ranged,env));
       } catch (error) {
         console.error('Headlines storage failed',error.message);
         return json({...forToday(INITIAL_NEWS,koreaDay()),refreshError:true},503);
