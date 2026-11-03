@@ -2,14 +2,18 @@ begin;
 do $$
 declare r jsonb; uid uuid;
 begin
- r:=public.wiw_api('signup',repeat('a',64),'{"username":"wiw_qa_transaction","password":"Test_password_2026"}');
+ r:=public.wiw_api('signup',repeat('a',64),'{"username":"wiw_qa_transaction","password":"Test_password_2026","language":"fr"}');
  assert r->'user'->>'username'='wiw_qa_transaction','signup failed';
+ assert r->'user'->>'language'='fr','signup language not saved';
  select id into uid from wiw.users where username='wiw_qa_transaction';
  assert (select password_hash<>'Test_password_2026' and password_hash like '$2a$12$%' from wiw.users where id=uid),'password not hashed';
  r:=public.wiw_api('login',repeat('b',64),'{"username":"wiw_qa_transaction","password":"wrong_password"}');
  assert r->>'error'='invalid_credentials','wrong password accepted';
  r:=public.wiw_api('login',repeat('b',64),'{"username":"wiw_qa_transaction","password":"Test_password_2026"}');
  assert r->'user'->>'username'='wiw_qa_transaction','login failed';
+ assert r->'user'->>'language'='fr','login language not restored';
+ r:=public.wiw_api('language',repeat('a',64),'{"language":"zh-TW"}');
+ assert r->'user'->>'language'='zh-TW','language preference not updated';
  r:=public.wiw_api('view',repeat('a',64),'{"article":{"id":"qa_transaction_article","title":"원문 제목 보관 테스트","country":"KR","source":"검증","date":"2026-10-06T05:24:00Z","url":"https://example.com/original","lang":"ko"},"viewer":"qa_viewer"}');
  assert r->>'historySaved'='true','history not saved';
  perform public.wiw_api('view',repeat('a',64),'{"article":{"id":"qa_transaction_article","title":"원문 제목 보관 테스트","country":"KR","source":"검증","date":"2026-10-06T05:24:00Z","url":"https://example.com/original","lang":"ko"},"viewer":"qa_viewer"}');

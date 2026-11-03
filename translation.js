@@ -13,14 +13,16 @@
   }
   if(buffer.trim())result.push(buffer.trim());return result;
  };
- globalThis.translateNewsText=async (text,lang) => {
-  if(lang==='ko')return text;
+ const code=lang => lang==='zh-TW' ? lang : String(lang || 'en').split('-')[0];
+ globalThis.translateNewsText=async (text,lang,target='ko') => {
+  const source=code(lang), destination=code(target);
+  if(source===destination)return text;
   if(Date.now()>googleUnavailableUntil) {
    try {
     const pieces=[];
     for(const chunk of chunks(text,1200)) {
      const url=new URL('https://translate.googleapis.com/translate_a/single');
-     Object.entries({client:'gtx',sl:'auto',tl:'ko',dt:'t',q:chunk}).forEach(([k,v]) => url.searchParams.set(k,v));
+     Object.entries({client:'gtx',sl:'auto',tl:destination,dt:'t',q:chunk}).forEach(([k,v]) => url.searchParams.set(k,v));
      const response=await fetch(url,{signal:AbortSignal.timeout(15000)});
      if(!response.ok)throw new Error('translation unavailable');
      const payload=await response.json(), translated=payload?.[0]?.map(p => p?.[0] || '').join('').trim();
@@ -32,7 +34,7 @@
   const pieces=[];
   for(const chunk of chunks(text,450)) {
    const url=new URL('https://api.mymemory.translated.net/get');
-   url.search=new URLSearchParams({q:chunk,langpair:(lang || 'en').split('-')[0]+'|ko'});
+   url.search=new URLSearchParams({q:chunk,langpair:source+'|'+destination});
    const response=await fetch(url,{signal:AbortSignal.timeout(15000)});
    if(!response.ok)throw new Error('translation unavailable');
    const payload=await response.json(), translated=payload.responseData?.translatedText;

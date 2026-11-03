@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const accountLanguages = new Set(['ko','ja','zh-TW','hi','id','th','vi','fr','de','es','it','en','pt','ar']);
 const b64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
 const token = () => Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 export const hashToken = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -76,11 +77,18 @@ export async function accountRoutes(request,env,findCurrent) {
    const input=await inputJSON(request), username=String(input.username || '').normalize('NFKC').toLowerCase().trim(), password=input.password;
    if(!/^[a-z0-9_]{3,24}$/.test(username) || typeof password!=='string' || password.length<8 || encoder.encode(password).length>64)
     return reply({error:'아이디는 영문·숫자·밑줄 3–24자, 비밀번호는 8자 이상·64바이트 이내로 입력해주세요.'},400);
-   const value=token(), result=await rpc(env,path.endsWith('/signup')?'signup':'login',await hashToken(value),{username,password});
+   const language=accountLanguages.has(input.language)?input.language:'ko';
+   const value=token(), result=await rpc(env,path.endsWith('/signup')?'signup':'login',await hashToken(value),{username,password,language});
    if(result.error)return reply({error:errors[result.error] || '가입할 수 없습니다.'},errorStatus(result));
    return reply(result,200,{'Set-Cookie':cookie('__Host-wiw_session',value)});
   }
   const session=await sessionHash(request);
+  if(path==='/api/account/language' && request.method==='POST') {
+   const language=(await inputJSON(request)).language;
+   if(!accountLanguages.has(language))return reply({error:'지원하지 않는 언어입니다.'},400);
+   const result=await rpc(env,'language',session,{language});
+   return result.error ? reply({error:errors[result.error]},errorStatus(result)) : reply(result);
+  }
   if(path==='/api/account/logout' && request.method==='POST') {
    await rpc(env,'logout',session);
    return reply({ok:true},200,{'Set-Cookie':cookie('__Host-wiw_session','',0)});

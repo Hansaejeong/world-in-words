@@ -19,15 +19,26 @@ async function fixture(callback){
  return {env,calls,restore:()=>{globalThis.fetch=native;}};
 }
 test('username signup sets a secure HttpOnly cookie and sends only its hash to Supabase',async()=>{
- const f=await fixture(()=>({user:{username:'reader_qa'}}));
+ const f=await fixture(()=>({user:{username:'reader_qa',language:'fr'}}));
  try{
-  const response=await accountRoutes(request('/api/account/signup',{username:'Reader_QA',password:'testing_password'}),f.env,async()=>null);
+  const response=await accountRoutes(request('/api/account/signup',{username:'Reader_QA',password:'testing_password',language:'fr'}),f.env,async()=>null);
   assert.equal(response.status,200);
   const cookie=response.headers.get('set-cookie');assert.match(cookie,/__Host-wiw_session=[a-f0-9]{64}; Path=\/; HttpOnly; Secure; SameSite=Lax/);
   const raw=cookie.split(';')[0].split('=')[1];
   assert.equal(f.calls[0].p_session,await hashToken(raw));
   assert.equal(f.calls[0].p_input.username,'reader_qa');
+  assert.equal(f.calls[0].p_input.language,'fr');
   assert.notEqual(f.calls[0].p_session,raw);
+ }finally{f.restore();}
+});
+test('language preference is validated and saved only for the current session',async()=>{
+ const f=await fixture(p=>p.p_action==='language'?{user:{username:'reader_qa',language:p.p_input.language}}:{error:'unauthorized'}),value='b'.repeat(64);
+ try{
+  const response=await accountRoutes(request('/api/account/language',{language:'zh-TW'},'__Host-wiw_session='+value),f.env,async()=>null);
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),{user:{username:'reader_qa',language:'zh-TW'}});
+  assert.equal(f.calls[0].p_action,'language');assert.equal(f.calls[0].p_session,await hashToken(value));
+  const invalid=await accountRoutes(request('/api/account/language',{language:'xx'},'__Host-wiw_session='+value),f.env,async()=>null);
+  assert.equal(invalid.status,400);assert.equal(f.calls.length,1);
  }finally{f.restore();}
 });
 test('cross-origin writes are rejected before any database call',async()=>{

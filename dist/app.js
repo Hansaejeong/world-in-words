@@ -10,6 +10,12 @@ const labels = {Asia:'아시아',Europe:'유럽',Americas:'아메리카',Africa:
 let view='today', user=null, accountReady=false, signup=false, archiveYear='', libraryArticles=[], libraryTotal=0, libraryYears=[], libraryPage=0, libraryLoading=false, libraryError='', libraryRequest=0;
 let countReady=false;
 const counts=new Map(), savedIds=new Set(), saving=new Set();
+const languageCode = value => value === 'zh-TW' ? value : String(value || '').split('-')[0];
+const languages = new Map((data?.countries || []).map(c => [languageCode(c.lang),c.language]));
+const allowedLanguages = new Set(languages.keys());
+const storedLanguage = () => {try{return localStorage.getItem('wiw-language');}catch{return null;}};
+let guestLanguage=allowedLanguages.has(storedLanguage())?storedLanguage():'ko', preferredLanguage=guestLanguage;
+const translationKey = id => preferredLanguage+'\u0000'+id;
 const articleById = id => libraryArticles.find(a=>a.id===id) || data?.articles.find(a=>a.id===id);
 const originalLink = article => `go/${encodeURIComponent(article.id)}${article.articleToken ? "?article="+encodeURIComponent(article.articleToken) : ""}`;
 const status = message => {$('#action-status').textContent=message;};
@@ -20,7 +26,7 @@ async function api(path, body) {
  return result;
 }
 async function loadAccount() {
- try {const result=await api('api/account');user=result.user;accountReady=result.configured;}
+ try {const result=await api('api/account');user=result.user;accountReady=result.configured;preferredLanguage=user?.language || guestLanguage;}
  catch {accountReady=false;}
  render();
 }
@@ -61,12 +67,26 @@ async function toggleScrap(id) {
 function openAccount() {
  $('#account-error').textContent='';$('#account-dialog').showModal();$('#username').focus();
 }
+function applyLanguage(language) {
+ if(!allowedLanguages.has(language))return;
+ preferredLanguage=language;translatedIds.clear();translationErrors.clear();render();
+}
+async function setLanguage(language) {
+ if(!allowedLanguages.has(language) || language===preferredLanguage)return;
+ const previous=preferredLanguage;applyLanguage(language);
+ try {
+  if(user){const result=await api('api/account/language',{language});user=result.user;status(`${languages.get(language)} 번역 설정을 계정에 저장했습니다.`);}
+  else {guestLanguage=language;try{localStorage.setItem('wiw-language',language);}catch{}status(`${languages.get(language)} 번역 설정을 이 브라우저에 저장했습니다.`);}
+ } catch(error){applyLanguage(previous);status(error.message);}
+}
 
 function render() {
  currentDay = day();
  $('#today').textContent = currentDay.replaceAll('-', '.'); $('#today').dateTime = currentDay;
  $('#account-name').textContent=user?`${user.username} 님`:'';
  $('#account-open').hidden=Boolean(user);$('#account-logout').hidden=!user;
+ $('#preferred-language').innerHTML=[...languages].map(([code,name])=>`<option value="${esc(code)}" ${code===preferredLanguage?'selected':''}>${esc(name)}</option>`).join('');
+ $('#preferred-language').title=user?'이 계정의 번역 언어로 저장됩니다.':'이 브라우저에 번역 언어가 저장됩니다.';
  $('#year-control').hidden=view==='today';
  $('#archive-year').innerHTML='<option value="">전체 연도</option>'+[...new Set([...libraryYears,...(archiveYear?[Number(archiveYear)]:[])])].sort((a,b)=>b-a).map(year=>`<option value="${year}" ${String(year)===archiveYear?'selected':''}>${year}년</option>`).join('');
  $('#library-note').hidden=view==='today';
@@ -86,9 +106,10 @@ function render() {
  if(view!=='today' && libraryError){$('#article-list').innerHTML=`<div class="library-empty"><p>${esc(libraryError)}</p><button data-library-retry>다시 시도</button></div>`;return;}
  if(view!=='today' && libraryLoading && !libraryArticles.length){$('#article-list').innerHTML='<p class="empty" role="status">보관함 불러오는 중</p>';return;}
  $('#article-list').innerHTML = (view==='today'?items.slice(0,limit):items).map(a => {
-  const translated = translatedIds.has(a.id) && translations.has(a.id), busy = translating.has(a.id);
+  const key=translationKey(a.id), translated = translatedIds.has(a.id) && translations.has(key), busy = translating.has(key);
   const count=a.viewCount??(countReady?counts.get(a.id)??0:null), saved=savedIds.has(a.id);
-  return `<article data-article="${esc(a.id)}"><p class="meta">${esc(countries.get(a.country)?.ko)} · ${esc(a.source)} · <time datetime="${esc(a.date)}">${day(new Date(a.date)).replaceAll('-','.')}</time> · <span class="view-count">조회 ${count===null?'—':Number(count).toLocaleString()}</span></p><h2 class="title" lang="${translated ? 'ko' : esc(a.lang)}" dir="${translated ? 'ltr' : a.direction === 'rtl' ? 'rtl' : 'ltr'}">${esc(translated ? translations.get(a.id) : a.title)}</h2><div class="article-actions">${a.lang === 'ko' ? '' : `<button class="translation-toggle" data-translate="${esc(a.id)}" aria-label="${translated ? '원어 제목 보기' : '제목 한국어로 보기'}: ${esc(a.title)}" aria-pressed="${translated}" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? '번역 중' : translationErrors.has(a.id) ? '번역 재시도' : translated ? '원어 보기' : '한국어 번역'}</button>`}<a href="${originalLink(a)}" target="_blank" rel="noopener noreferrer" data-original="${esc(a.id)}">기사 원문 ↗</a><button class="scrap-toggle" data-scrap="${esc(a.id)}" aria-pressed="${saved}" ${saving.has(a.id)?'disabled':''}>${saving.has(a.id)?'저장 중':saved?'스크랩 해제':'스크랩'}</button></div>${view==='history'&&a.lastViewedAt?`<p class="record-meta">${day(new Date(a.lastViewedAt)).replaceAll('-','.')} 열람 · ${a.openCount}회 방문</p>`:''}</article>`;
+  const languageName=languages.get(preferredLanguage), sameLanguage=languageCode(a.lang)===preferredLanguage;
+  return `<article data-article="${esc(a.id)}"><p class="meta">${esc(countries.get(a.country)?.ko)} · ${esc(a.source)} · <time datetime="${esc(a.date)}">${day(new Date(a.date)).replaceAll('-','.')}</time> · <span class="view-count">조회 ${count===null?'—':Number(count).toLocaleString()}</span></p><h2 class="title" lang="${translated ? esc(preferredLanguage) : esc(a.lang)}" dir="${translated ? preferredLanguage==='ar'?'rtl':'ltr' : a.direction === 'rtl' ? 'rtl' : 'ltr'}">${esc(translated ? translations.get(key) : a.title)}</h2><div class="article-actions">${sameLanguage ? '' : `<button class="translation-toggle" data-translate="${esc(a.id)}" aria-label="${translated ? '원어 제목 보기' : `제목 ${languageName}로 보기`}: ${esc(a.title)}" aria-pressed="${translated}" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? '번역 중' : translationErrors.has(key) ? '번역 재시도' : translated ? '원어 보기' : `${languageName} 번역`}</button>`}<a href="${originalLink(a)}" target="_blank" rel="noopener noreferrer" data-original="${esc(a.id)}">기사 원문 ↗</a><button class="scrap-toggle" data-scrap="${esc(a.id)}" aria-pressed="${saved}" ${saving.has(a.id)?'disabled':''}>${saving.has(a.id)?'저장 중':saved?'스크랩 해제':'스크랩'}</button></div>${view==='history'&&a.lastViewedAt?`<p class="record-meta">${day(new Date(a.lastViewedAt)).replaceAll('-','.')} 열람 · ${a.openCount}회 방문</p>`:''}</article>`;
  }).join('') || (query?'<p class="empty">일치하는 기사가 없습니다.</p>':view==='history'?'<div class="library-empty"><p>아직 열람 기록이 없습니다. 로그인 상태에서 ‘기사 원문’을 열면 자동으로 보관됩니다.</p></div>':view==='scraps'?'<div class="library-empty"><p>저장한 기사가 없습니다. 기사 옆 ‘스크랩’을 눌러 보관해보세요.</p></div>':'<p class="empty">오늘 올라온 제목이 없습니다.</p>');
 }
 async function refresh() {
@@ -117,15 +138,16 @@ function scheduleMidnight() {
 }
 async function translateTitle(id) {
  const article = articleById(id);
- if (!article || translating.has(id)) return;
+ const key=translationKey(id), target=preferredLanguage;
+ if (!article || translating.has(key)) return;
  if (translatedIds.has(id)) {translatedIds.delete(id);render();return;}
- if (translations.has(id)) {translatedIds.add(id);render();return;}
- translating.add(id);translationErrors.delete(id);render();
+ if (translations.has(key)) {translatedIds.add(id);render();return;}
+ translating.add(key);translationErrors.delete(key);render();
  try {
-  const title=await translateNewsText(article.title,article.lang);
-  translations.set(id,title);translatedIds.add(id);
- } catch {translationErrors.add(id);}
- finally {translating.delete(id);render();}
+  const title=await translateNewsText(article.title,article.lang,target);
+  translations.set(key,title);if(preferredLanguage===target)translatedIds.add(id);
+ } catch {translationErrors.add(key);}
+ finally {translating.delete(key);render();}
 }
 document.addEventListener('click', e => {
  const login=e.target.closest('[data-login]');if(login){openAccount();return;}
@@ -141,6 +163,7 @@ document.addEventListener('click', e => {
 let searchTimer;
 $('#search').addEventListener('input',e => {query=e.target.value;limit=50;if(view==='today')render();else {clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadLibrary(),300);}});
 $('#sort').addEventListener('change',e => {sort=e.target.value;render();if(view!=='today')loadLibrary();});
+$('#preferred-language').addEventListener('change',e=>setLanguage(e.target.value));
 $('#archive-year').addEventListener('change',e=>{archiveYear=e.target.value;loadLibrary();});
 $('#more').addEventListener('click',()=>{if(view==='today'){limit+=50;render();}else {libraryPage++;loadLibrary(true);}});
 $('#account-open').addEventListener('click',openAccount);
@@ -154,13 +177,13 @@ $('#account-form').addEventListener('submit',async e=>{
  if(signup && $('#password').value!==$('#password-confirm').value){$('#account-error').textContent='비밀번호 확인이 일치하지 않습니다.';return;}
  const submit=$('#account-submit');submit.disabled=true;
  try {
-  const result=await api('api/account/'+(signup?'signup':'login'),{username:$('#username').value,password:$('#password').value});
-  user=result.user;render();$('#password').value='';$('#password-confirm').value='';$('#account-dialog').close();status(signup?'가입했습니다. 원문을 열면 열람 기록이 저장됩니다.':'로그인했습니다.');await loadCounts();if(view!=='today')await loadLibrary();render();
+  const result=await api('api/account/'+(signup?'signup':'login'),{username:$('#username').value,password:$('#password').value,language:preferredLanguage});
+  user=result.user;applyLanguage(user.language);$('#password').value='';$('#password-confirm').value='';$('#account-dialog').close();status(signup?'가입했습니다. 원문을 열면 열람 기록이 저장됩니다.':'로그인했습니다.');await loadCounts();if(view!=='today')await loadLibrary();render();
  } catch(error){$('#account-error').textContent=error.message;}
  finally {submit.disabled=false;}
 });
 $('#account-logout').addEventListener('click',async()=>{
- try {await api('api/account/logout',{});user=null;savedIds.clear();libraryArticles=[];libraryTotal=0;libraryYears=[];libraryRequest++;status('로그아웃했습니다.');render();}
+ try {await api('api/account/logout',{});user=null;applyLanguage(guestLanguage);savedIds.clear();libraryArticles=[];libraryTotal=0;libraryYears=[];libraryRequest++;status('로그아웃했습니다.');render();}
  catch(error){status(error.message);}
 });
 $('#back-top').addEventListener('click',() => window.scrollTo({top:0}));

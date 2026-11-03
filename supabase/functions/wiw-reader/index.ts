@@ -11,7 +11,7 @@ export async function handle(request: Request): Promise<Response> {
   const valid=await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},await verificationKey,bytes,new TextEncoder().encode(timestamp+'\n'+text));
   if(!valid)return new Response('Unauthorized',{status:401});
   const payload=JSON.parse(text);
-  if(!['signup','login','logout','session','counts','view','scrap','article','library'].includes(payload.p_action))return new Response('Bad request',{status:400});
+  if(!['signup','login','logout','session','language','counts','view','scrap','article','library'].includes(payload.p_action))return new Response('Bad request',{status:400});
   const secrets=JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}');
   const secret=secrets.default || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if(!secret)return new Response('Database unavailable',{status:503});
