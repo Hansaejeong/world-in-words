@@ -3,7 +3,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const day = (date = new Date()) => new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
-let data = window.NEWS, currentDay = day(), country = 'all', titleQuery = '', publisher = '', dateFrom = currentDay, dateTo = currentDay, sort = 'views', limit = 50, loading = false, refreshQueued = false;
+let data = window.NEWS, currentDay = day(), country = 'all', titleQuery = '', publisher = '', dateFrom = currentDay, dateTo = currentDay, sort = 'hot', limit = 50, loading = false, refreshQueued = false;
 const translations = new Map(), translatedIds = new Set(), translating = new Set(), translationErrors = new Set();
 const safeLink = url => {try{return new URL(url).protocol === 'https:' ? url : '#';}catch{return '#';}};
 const labels = {Asia:'아시아',Europe:'유럽',Americas:'아메리카',Africa:'아프리카','Middle East':'중동',Oceania:'오세아니아'};
@@ -117,7 +117,9 @@ function render() {
  document.querySelectorAll('[data-country]').forEach(b => {b.classList.toggle('selected',b.dataset.country === country);b.setAttribute('aria-pressed',String(b.dataset.country === country));});
  const q = titleQuery.normalize('NFKC').toLocaleLowerCase();
  const source=view==='today'?data.articles:libraryArticles;
- const items = source.filter(a => {const published=day(new Date(a.date));return published>=dateFrom && published<=dateTo && (country==='all'||a.country===country) && (!publisher||a.source===publisher) && (!q||a.title.normalize('NFKC').toLocaleLowerCase().includes(q));}).sort((a,b)=>(sort==='country'?a.country.localeCompare(b.country):0) || ((b.viewCount??counts.get(b.id)??0)-(a.viewCount??counts.get(a.id)??0)) || b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+ const candidates = source.filter(a => {const published=day(new Date(a.date));return published>=dateFrom && published<=dateTo && (country==='all'||a.country===country) && (!publisher||a.source===publisher) && (!q||a.title.normalize('NFKC').toLocaleLowerCase().includes(q));});
+ const hotness=rankHeadlines(candidates);
+ const items = candidates.sort((a,b)=>(sort==='country'?a.country.localeCompare(b.country):0) || (hotness.get(b.id)-hotness.get(a.id)) || b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
  $('#section-title').textContent=view==='history'?'열람 기록':view==='scraps'?'스크랩':country==='all'?'세계의 헤드라인':`${countries.get(country)?.ko}의 헤드라인`;
  $('#result-count').textContent=`${view==='today'?items.length.toLocaleString()+(data.truncated?'개 이상':'개'):user?libraryTotal.toLocaleString()+'개':'0개'} 기사`;
  $('#more').hidden=view==='today'?items.length<=limit:!user||libraryLoading||libraryArticles.length>=libraryTotal;
