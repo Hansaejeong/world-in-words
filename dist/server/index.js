@@ -1,6 +1,5 @@
 import { COUNTRIES, SOURCES, ASSETS, INITIAL_NEWS } from './generated.mjs';
-import { readArticle, publisherUrl } from './reader.mjs';
-import { accountRoutes, accountArticle, sealHeadlines } from './accounts.mjs';
+import { accountRoutes, sealHeadlines } from './accounts.mjs';
 
 export const koreaDay = (date = new Date()) => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -144,25 +143,6 @@ export default {
     const findCurrent = async id => (await readSaved(env,koreaDay())).articles.find(a => a.id===id);
     const accountResponse = await accountRoutes(request,env,findCurrent);
     if(accountResponse)return accountResponse;
-    if (path === '/api/article' && request.method === 'GET') {
-      const id=new URL(request.url).searchParams.get('id');
-      const article=await findCurrent(id) || await accountArticle(request,env,id);
-      if(!article)return json({error:'Article not found'},404);
-      try {return json(await readArticle(article,env));}
-      catch(error) {
-        console.warn('Article reader unavailable',error.message);
-        return json({unavailable:true,paragraphs:[],url:article.publisherUrl || article.url || article.sourceUrl || null});
-      }
-    }
-    if (path === '/api/article-snapshot' && request.method === 'POST') {
-      const data=await readSaved(env,koreaDay()), incoming=await request.json();
-      const article=data.articles.find(a => a.id===incoming.id);
-      if(!article || !publisherUrl(incoming.url,article.country) || !Array.isArray(incoming.paragraphs))return json({error:'Verified publisher article required'},400);
-      const paragraphs=incoming.paragraphs.filter(p => typeof p==='string' && p.trim()).map(p => p.trim());
-      if(!paragraphs.length || paragraphs.join('').length>200000)return json({error:'Invalid article text'},400);
-      await env.BUCKET.put('articles/'+article.id+'.json',JSON.stringify({url:incoming.url,paragraphs,lang:article.lang,source:article.source}));
-      return json({id:article.id,paragraphs:paragraphs.length});
-    }
     if (path === '/api/sources' && request.method === 'GET') {
       return json({date:koreaDay(),articleFields:['id','country','title','source','date','url','sourceUrl'],countries:COUNTRIES.map(c => ({...c,feeds:[String(feedUrl(c,koreaDay()))]}))});
     }

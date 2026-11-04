@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { koreaDay, parseFeed, refreshHeadlines } from '../dist/server/index.js';
-import { extractArticle, publisherUrl } from '../dist/server/reader.mjs';
 import '../ranking.js';
 import '../translation.js';
 
@@ -81,15 +80,10 @@ test('headline search validates a one-year range and filters title, country, and
  assert.equal(invalid.status,400);
 });
 
-test('article reader extracts text without executable HTML and respects paid articles', () => {
-  const paragraph='A public article paragraph explaining the government election results in detail. '.repeat(3);
-  const html='<script type="application/ld+json">'+JSON.stringify({'@type':'NewsArticle',articleBody:paragraph+'\nSecond paragraph with more information.'})+'</script>';
-  assert.equal(extractArticle(html).paragraphs.length,2);
-  assert.equal(extractArticle('<script type="application/ld+json">'+JSON.stringify({'@type':'NewsArticle',isAccessibleForFree:false,articleBody:paragraph})+'</script>').restricted,true);
-  assert.deepEqual(extractArticle('<article><p>'+paragraph+'</p><p class="related">Unrelated advertising content that should be excluded from the reader</p></article>').paragraphs,[paragraph.trim()]);
-  assert.equal(publisherUrl('https://localhost/admin','KR'),null);
-  assert.equal(publisherUrl('https://yna.co.kr.attacker.example/article','KR'),null);
-  assert.ok(publisherUrl('https://www.yna.co.kr/view/article','KR'));
+test('title-only site does not expose article body endpoints',async()=>{
+ const storage=bucket({collectedAt:new Date().toISOString(),articles:[]}),env={BUCKET:storage};
+ assert.equal((await worker.fetch(new Request('https://example.com/api/article?id=example'),env,{waitUntil:()=>{}})).status,404);
+ assert.equal((await worker.fetch(new Request('https://example.com/api/article-snapshot',{method:'POST',body:'{}'}),env,{waitUntil:()=>{}})).status,405);
 });
 
 test('snapshot preserves Korean Unicode and rejects damaged uploads without replacing it', async () => {
@@ -137,20 +131,6 @@ test('translation falls back after rate limits and respects the alternate byte l
     assert.ok(result.includes('한국어 번역'));assert.equal(googleRequests,1);assert.ok(alternateRequests>1);
   } finally {globalThis.fetch=original;}
 });
-
-test('saved article text is readable inside the site and rejects untrusted publishers', async () => {
-  const article={id:'article-reader-check',country:'US',title:'A current article',source:'NPR',lang:'en',date:new Date().toISOString()};
-  const values=new Map([['headlines/latest.json',JSON.stringify({articles:[article],collectedAt:new Date().toISOString()})]]);
-  const env={BUCKET:{get:async key => values.has(key) ? {json:async () => JSON.parse(values.get(key))} : null,put:async (key,value) => values.set(key,value)}};
-  const payload={id:article.id,url:'https://www.npr.org/article',paragraphs:['Original article paragraph.']};
-  const written=await worker.fetch(new Request('https://example.com/api/article-snapshot',{method:'POST',body:JSON.stringify(payload)}),env,{});
-  assert.equal(written.status,200);
-  const read=await worker.fetch(new Request('https://example.com/api/article?id='+article.id),env,{});
-  assert.deepEqual((await read.json()).paragraphs,payload.paragraphs);
-  payload.url='https://127.0.0.1/admin';
-  assert.equal((await worker.fetch(new Request('https://example.com/api/article-snapshot',{method:'POST',body:JSON.stringify(payload)}),env,{})).status,400);
-});
-
 
 test('Korean collection keeps original Hangul titles and excludes English edition titles', async () => {
   const korean={code:'KR',lang:'ko'}, date=new Date().toUTCString(), today=koreaDay();
