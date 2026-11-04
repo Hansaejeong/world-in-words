@@ -3,7 +3,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const day = (date = new Date()) => new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
-let data = window.NEWS, currentDay = day(), country = 'all', titleQuery = '', publisher = '', dateFrom = currentDay, dateTo = currentDay, sort = 'views', limit = 50, loading = false;
+let data = window.NEWS, currentDay = day(), country = 'all', titleQuery = '', publisher = '', dateFrom = currentDay, dateTo = currentDay, sort = 'views', limit = 50, loading = false, refreshQueued = false;
 const translations = new Map(), translatedIds = new Set(), translating = new Set(), translationErrors = new Set();
 const safeLink = url => {try{return new URL(url).protocol === 'https:' ? url : '#';}catch{return '#';}};
 const labels = {Asia:'아시아',Europe:'유럽',Americas:'아메리카',Africa:'아프리카','Middle East':'중동',Oceania:'오세아니아'};
@@ -79,6 +79,10 @@ async function runSearch() {
  $('#search-error').textContent='';dateFrom=from;dateTo=to;titleQuery=$('#title-search').value.trim();country=$('#country-search').value;publisher=$('#publisher-search').value;limit=50;
  if(view==='today')await refresh();else await loadLibrary();
 }
+async function resetFilters() {
+ country='all';publisher='';titleQuery='';dateFrom=currentDay;dateTo=currentDay;limit=50;$('#search-error').textContent='';render();
+ if(view==='today')await refresh();else await loadLibrary();
+}
 function applyLanguage(language) {
  if(!allowedLanguages.has(language))return;
  preferredLanguage=language;translatedIds.clear();translationErrors.clear();render();
@@ -129,7 +133,7 @@ function render() {
 }
 async function refresh() {
  currentDay = day(); render();
- if (loading) return; loading = true; $('#update-status').textContent = '';
+ if (loading) {refreshQueued=true;return;} loading = true; $('#update-status').textContent = '';
  try {
   const params=new URLSearchParams({from:dateFrom,to:dateTo,title:titleQuery,country,publisher});
   const response = await fetch(`api/headlines?${params}`, {cache:'no-store',signal:AbortSignal.timeout(40000)});
@@ -143,7 +147,7 @@ async function refresh() {
   $('#update-status').textContent = collectedDay !== currentDay ? '새 제목 수집 중' : data.failures?.length ? '일부 국가 수집 지연' : '';
  } catch (error) {
   $('#update-status').textContent = error.message?.includes('필요') || error.message?.includes('서버로') || error.message?.includes('지연') ? error.message : '기사 연결 재시도 중';
- } finally {loading = false;}
+ } finally {loading = false;if(refreshQueued){refreshQueued=false;refresh();}}
 }
 function scheduleMidnight() {
  const now = new Date();
@@ -177,6 +181,9 @@ document.addEventListener('click', e => {
  if(button){country = button.dataset.country;$('#country-search').value=country;limit = 50;if(view==='today')refresh();else loadLibrary();}
 });
 $('#search-form').addEventListener('submit',e=>{e.preventDefault();runSearch();});
+$('#country-search').addEventListener('change',runSearch);
+$('#publisher-search').addEventListener('change',runSearch);
+$('#filter-reset').addEventListener('click',resetFilters);
 $('#sort').addEventListener('change',e => {sort=e.target.value;render();if(view!=='today')loadLibrary();});
 $('#preferred-language').addEventListener('change',e=>setLanguage(e.target.value));
 $('#more').addEventListener('click',()=>{if(view==='today'){limit+=50;render();}else {libraryPage++;loadLibrary(true);}});
