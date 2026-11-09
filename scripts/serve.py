@@ -9,6 +9,7 @@ import pathlib
 import subprocess
 import sys
 import threading
+import urllib.parse
 from zoneinfo import ZoneInfo
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -46,7 +47,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        if self.path.split('?')[0] == '/api/headlines':
+        path = urllib.parse.urlparse(self.path).path
+        if path == '/api/headlines':
             try:
                 body = json.dumps(snapshot(today_only=True), ensure_ascii=False).encode()
                 self.send_response(200)
@@ -57,6 +59,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(body)
             except Exception:
                 self.send_error(503, 'Headlines temporarily unavailable')
+        elif path.startswith('/go/'):
+            article_id = urllib.parse.unquote(path.removeprefix('/go/'))
+            article = next((item for item in snapshot(today_only=True)['articles']
+                            if item.get('id') == article_id), None)
+            if article is None:
+                self.send_error(404, 'Article not found')
+                return
+            target = next((url for url in (article.get('publisherUrl'), article.get('url'))
+                           if url and urllib.parse.urlparse(url).scheme == 'https'), None)
+            if target is None:
+                self.send_error(404, 'Article link not found')
+                return
+            self.send_response(303)
+            self.send_header('Location', target)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
         else:
             super().do_GET()
 
